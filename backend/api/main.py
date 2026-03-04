@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, Query
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends, Query, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_, or_
@@ -8,13 +9,21 @@ from datetime import datetime
 import uvicorn
 import sys
 import os
+import tempfile
+import shutil
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import get_db, Bet
+from database import get_db, Bet, init_db
+from scripts.ingest_bets import ingest_csv_file
 from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability
 
-app = FastAPI(title="BFBM Bet Explorer API")
+@asynccontextmanager
+async def lifespan(app):
+    init_db()
+    yield
+
+app = FastAPI(title="BFBM Bet Explorer API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -601,6 +610,32 @@ def get_odds_bands_profit(filters: FilterParams, db: Session = Depends(get_db)):
         })
     
     return result
+
+@app.post("/ingest")
+async def ingest_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Upload a CSV bet export file and ingest it into the database"""
+    if not file.filename or not file.filename.lower().endswith('.csv'):
+        raise HTTPException(status_code=400, detail="File must be a .csv")
+
+    # Write upload to a temp file then ingest
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
+
+    try:
+        result = ingest_csv_file(tmp_path, db)
+        total_bets = db.query(Bet).count()
+        return {
+            "filename": file.filename,
+            "inserted": result['inserted'],
+            "updated": result['updated'],
+            "skipped": result['skipped'],
+            "total_bets_in_db": total_bets,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        os.unlink(tmp_path)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

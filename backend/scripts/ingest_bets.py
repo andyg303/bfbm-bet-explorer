@@ -11,17 +11,24 @@ from database import SessionLocal, init_db, Bet
 from scripts.bsp_utils import calculate_bsp_metrics
 
 def sanitize_currency(value):
-    """Remove currency symbols and convert to float"""
+    """Remove currency symbols and convert to float.
+    Handles any encoding artefacts (£ rendered as ï¿½ etc.) by stripping
+    everything that isn't a digit, decimal point, or leading minus sign."""
     if pd.isna(value):
         return None
     if isinstance(value, (int, float)):
         return float(value)
-    
-    value_str = str(value)
-    value_str = re.sub(r'[£$€\s,]', '', value_str)
-    
+
+    value_str = str(value).strip()
+    negative = value_str.startswith('-')
+    # Keep only digits and decimal point — encoding-agnostic
+    cleaned = re.sub(r'[^\d.]', '', value_str)
+
+    if not cleaned:
+        return None
     try:
-        return float(value_str)
+        result = float(cleaned)
+        return -result if negative else result
     except ValueError:
         return None
 
@@ -69,11 +76,21 @@ def parse_datetime(value):
     except:
         return None
 
+def read_csv(filepath: str) -> 'pd.DataFrame':
+    """Try multiple encodings so both UTF-8 and latin-1 exports work."""
+    for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
+        try:
+            return pd.read_csv(filepath, encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+    # Last resort: replace undecodable bytes
+    return pd.read_csv(filepath, encoding='latin-1', errors='replace')
+
 def ingest_csv_file(filepath: str, db: Session):
     """Ingest a single CSV file into the database"""
     print(f"Processing {filepath}...")
     
-    df = pd.read_csv(filepath, encoding='latin-1')
+    df = read_csv(filepath)
     
     print(f"Found {len(df)} rows")
     
@@ -171,6 +188,7 @@ def ingest_csv_file(filepath: str, db: Session):
             print(f"  Processed {inserted + updated} rows...")
     
     print(f"Completed: {inserted} inserted, {updated} updated, {skipped} skipped (invalid status)")
+    return {'inserted': inserted, 'updated': updated, 'skipped': skipped}
 
 def main():
     print("Initializing database...")
@@ -179,19 +197,31 @@ def main():
     db = SessionLocal()
     
     try:
-        csv_files = glob.glob("../*.csv")
+        # Resolve data directory: use DATA_DIR env var, or look for data/ relative to project root
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_dir = os.path.dirname(script_dir)
+        default_data_dir = os.path.join(backend_dir, 'data')
+        data_dir = os.environ.get('DATA_DIR', default_data_dir)
+        
+        csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
         
         if not csv_files:
-            print("No CSV files found in parent directory")
+            print(f"No CSV files found in {data_dir}")
+            print("Place your CSV bet export files in the 'data/' folder in the project root.")
             return
         
-        print(f"Found {len(csv_files)} CSV files")
+        print(f"Found {len(csv_files)} CSV files in {data_dir}")
         
+        total_inserted = total_updated = total_skipped = 0
         for csv_file in csv_files:
-            ingest_csv_file(csv_file, db)
+            result = ingest_csv_file(csv_file, db)
+            total_inserted += result['inserted']
+            total_updated += result['updated']
+            total_skipped += result['skipped']
         
         total_bets = db.query(Bet).count()
-        print(f"\nTotal bets in database: {total_bets}")
+        print(f"\nSummary: {total_inserted} inserted, {total_updated} updated, {total_skipped} skipped")
+        print(f"Total bets in database: {total_bets}")
         
     finally:
         db.close()

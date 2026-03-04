@@ -1,5 +1,7 @@
 import axios from 'axios'
 
+// Docker: VITE_API_URL="/api" → nginx proxies to backend
+// Local dev: defaults to 'http://localhost:8000'
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const api = axios.create({
@@ -125,5 +127,19 @@ export const getSummaryStats = async (filters: FilterParams) => {
 
 export const getOddsBandsProfit = async (filters: FilterParams): Promise<OddsBandProfit[]> => {
   const response = await api.post('/odds-bands-profit', filters)
+  return response.data
+}
+
+export const uploadBetsCSV = async (
+  file: File,
+  onProgress?: (pct: number) => void
+): Promise<{ filename: string; inserted: number; updated: number; skipped: number; total_bets_in_db: number }> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await axios.post(`${API_BASE_URL}/ingest`, formData, {
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+    },
+  })
   return response.data
 }
