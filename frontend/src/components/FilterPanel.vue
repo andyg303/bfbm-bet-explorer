@@ -18,6 +18,10 @@ watch(() => betStore.filters, () => {
 }, { deep: true })
 
 function clearFilters() {
+  betStore.stakingParams = {
+    staking_type: 'default',
+    base_stake: 10,
+  }
   betStore.filters = {
     strategies: [],
     bet_types: [],

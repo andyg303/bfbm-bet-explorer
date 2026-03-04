@@ -45,10 +45,3 @@
 
 
 
-can we organise the scripts in backend so that api ones are in a different folder to bet/db processing scripts.
-
-Call one api
-
-Other scripts
-
-Obviously update any import lines to reflect correclty

@@ -76,6 +76,7 @@ export interface Bet {
   price_requested: number | null
   recalculated_stake?: number
   recalculated_pl?: number
+  recalculated_liability?: number
 }
 
 export interface PLDataPoint {

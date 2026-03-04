@@ -1,4 +1,8 @@
 """Apply 2% commission to all winning bets in the database"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from database import SessionLocal, Bet
 
 def apply_commission(profit_loss):

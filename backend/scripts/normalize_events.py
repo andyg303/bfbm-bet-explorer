@@ -1,4 +1,8 @@
 """Normalize event names to kebab-case format"""
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from database import SessionLocal, Bet
 
 def normalize_event_name(event_name):

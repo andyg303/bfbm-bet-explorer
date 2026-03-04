@@ -129,10 +129,19 @@ function applySelection() {
 
 function clearSelection() {
   selectedStrategies.value.clear()
+  betStore.stakingParams = {
+    staking_type: 'default',
+    base_stake: 10,
+  }
   betStore.filters.strategies = []
+  betStore.refreshAll()
 }
 
 function clearFilters() {
+  betStore.stakingParams = {
+    staking_type: 'default',
+    base_stake: 10,
+  }
   strategyFilters.value = {
     nameSearch: '',
     minBets: null,
@@ -242,7 +251,9 @@ function clearFilters() {
             <td class="px-6 py-4 whitespace-nowrap text-sm" :class="stat.roi >= 0 ? 'text-green-600' : 'text-red-600'">
               {{ stat.roi }}%
             </td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">£{{ stat.yield_pct.toFixed(2) }}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm" :class="stat.yield_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+              {{ stat.yield_pct.toFixed(2) }}%
+            </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">£{{ stat.total_staked.toLocaleString() }}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ stat.avg_odds.toFixed(2) }}</td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ stat.win_rate.toFixed(1) }}%</td>

@@ -1,6 +1,10 @@
 from sqlalchemy.orm import Session
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from database import SessionLocal, Bet
-from bsp_utils import calculate_bsp_metrics
+from scripts.bsp_utils import calculate_bsp_metrics
 
 def backfill_bsp_metrics():
     """Backfill BSP metrics for all existing bets"""

@@ -19,8 +19,30 @@ const bets = computed(() => {
   if (!data.length) return data
   
   const sorted = [...data].sort((a, b) => {
-    const aVal = a[sortKey.value]
-    const bVal = b[sortKey.value]
+    let aVal = a[sortKey.value]
+    let bVal = b[sortKey.value]
+    
+    // Use recalculated values when custom staking is applied
+    if (isCustomStaking.value) {
+      if (sortKey.value === 'matched_amount' && a.recalculated_stake !== undefined) {
+        aVal = a.recalculated_stake
+      }
+      if (sortKey.value === 'matched_amount' && b.recalculated_stake !== undefined) {
+        bVal = b.recalculated_stake
+      }
+      if (sortKey.value === 'profit_loss' && a.recalculated_pl !== undefined) {
+        aVal = a.recalculated_pl
+      }
+      if (sortKey.value === 'profit_loss' && b.recalculated_pl !== undefined) {
+        bVal = b.recalculated_pl
+      }
+      if (sortKey.value === 'lay_liability' && a.recalculated_liability !== undefined) {
+        aVal = a.recalculated_liability
+      }
+      if (sortKey.value === 'lay_liability' && b.recalculated_liability !== undefined) {
+        bVal = b.recalculated_liability
+      }
+    }
     
     // Handle null/undefined
     if (aVal == null && bVal == null) return 0
@@ -99,7 +121,8 @@ async function generateCSVContent() {
   
   if (isCustomStaking.value) {
     headers.splice(5, 0, 'Recalc Stake')
-    headers.splice(13, 0, 'Recalc P/L')
+    headers.splice(12, 0, 'Recalc Liability')
+    headers.splice(14, 0, 'Recalc P/L')
   }
   
   const csvRows = [headers.join(',')]
@@ -125,7 +148,8 @@ async function generateCSVContent() {
     
     if (isCustomStaking.value && bet.recalculated_stake) {
       row.splice(5, 0, bet.recalculated_stake.toFixed(2))
-      row.splice(13, 0, bet.recalculated_pl?.toFixed(2) || '')
+      row.splice(12, 0, bet.recalculated_liability?.toFixed(2) || '')
+      row.splice(14, 0, bet.recalculated_pl?.toFixed(2) || '')
     }
     
     csvRows.push(row.join(','))
@@ -273,7 +297,11 @@ async function exportToCSV() {
               {{ bet.bsp_diff_probability ? ((bet.bsp_diff_probability > 0 ? '+' : '') + bet.bsp_diff_probability.toFixed(2) + '%') : '-' }}
             </td>
             <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-              {{ bet.lay_liability ? '£' + bet.lay_liability.toFixed(2) : '-' }}
+              <div v-if="isCustomStaking && bet.recalculated_liability !== undefined">
+                <div class="font-semibold text-blue-600 dark:text-blue-400">£{{ bet.recalculated_liability.toFixed(2) }}</div>
+                <div class="text-xs text-gray-400 dark:text-gray-500 line-through">{{ bet.lay_liability ? '£' + bet.lay_liability.toFixed(2) : '-' }}</div>
+              </div>
+              <div v-else>{{ bet.lay_liability ? '£' + bet.lay_liability.toFixed(2) : '-' }}</div>
             </td>
             <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
               <div v-if="isCustomStaking && bet.recalculated_pl !== undefined">

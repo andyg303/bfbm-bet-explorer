@@ -1,11 +1,14 @@
 import pandas as pd
 import re
 from sqlalchemy.orm import Session
-from database import SessionLocal, init_db, Bet
 from datetime import datetime
 import os
 import glob
-from bsp_utils import calculate_bsp_metrics
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from database import SessionLocal, init_db, Bet
+from scripts.bsp_utils import calculate_bsp_metrics
 
 def sanitize_currency(value):
     """Remove currency symbols and convert to float"""
@@ -90,6 +93,7 @@ def ingest_csv_file(filepath: str, db: Session):
     
     for idx, row in df.iterrows():
         status = str(row['Status']) if pd.notna(row['Status']) else None
+        # Skip bets that are not MATCHED or SETTLED (excludes VOIDED, CANCELLED, etc.)
         if status not in ['MATCHED', 'SETTLED']:
             skipped += 1
             continue
