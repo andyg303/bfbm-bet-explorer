@@ -6,6 +6,7 @@ interface AuthUser {
   id: number
   email: string
   display_name: string
+  is_admin?: boolean
   subscription_status?: string  // inactive | active | cancelled | expired
   subscription_plan?: string    // 6month | 12month
   subscription_expires?: string // ISO date
@@ -43,6 +44,7 @@ export const useAuthStore = defineStore('auth', () => {
   const displayName = computed(() => user.value?.display_name || user.value?.email || '')
   const hasActiveSubscription = computed(() => {
     if (!user.value) return false
+    if (user.value.is_admin) return true
     if (user.value.subscription_status !== 'active') return false
     if (user.value.subscription_expires) {
       return new Date(user.value.subscription_expires) > new Date()

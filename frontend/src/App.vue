@@ -21,10 +21,27 @@ const betStore = useBetStore()
 const auth = useAuthStore()
 const { isDark, toggle: toggleDark } = useDarkMode()
 
-// ─── Page routing (SPA-style) ────────────────────────────────────────────────
+// ─── Page routing (SPA-style with real URLs) ────────────────────────────────
 type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard'
 const currentPage = ref<AppPage>('landing')
 const authInitialMode = ref<'login' | 'register'>('login')
+
+// URL ↔ page mapping
+const PAGE_PATHS: Record<AppPage, string> = {
+  landing: '/',
+  login: '/login',
+  register: '/register',
+  pricing: '/pricing',
+  dashboard: '/dashboard',
+}
+
+function pageFromPath(path: string): AppPage {
+  const clean = path.replace(/\/+$/, '') || '/'
+  for (const [page, p] of Object.entries(PAGE_PATHS)) {
+    if (clean === p) return page as AppPage
+  }
+  return 'landing'
+}
 
 // Determine which page to show on load
 function determineInitialPage(): AppPage {
@@ -33,19 +50,47 @@ function determineInitialPage(): AppPage {
   if (params.get('payment') === 'success') {
     return auth.isAuthenticated ? 'dashboard' : 'login'
   }
-  if (auth.isAuthenticated && auth.hasActiveSubscription) return 'dashboard'
-  if (auth.isAuthenticated && !auth.hasActiveSubscription) return 'pricing'
-  return 'landing'
+  // Respect the current URL path first
+  const urlPage = pageFromPath(window.location.pathname)
+  // Guard: dashboard requires auth + subscription
+  if (urlPage === 'dashboard') {
+    if (!auth.isAuthenticated) return 'login'
+    if (!auth.hasActiveSubscription) return 'pricing'
+    return 'dashboard'
+  }
+  // Guard: pricing while not logged in → allow (they can view it)
+  // If authenticated with subscription and on landing → go to dashboard
+  if (urlPage === 'landing' && auth.isAuthenticated && auth.hasActiveSubscription) return 'dashboard'
+  if (urlPage === 'landing' && auth.isAuthenticated && !auth.hasActiveSubscription) return 'pricing'
+  return urlPage
 }
 
-function navigateTo(page: string) {
+function navigateTo(page: string, replace = false) {
   if (page === 'login' || page === 'register') {
     authInitialMode.value = page as 'login' | 'register'
-    currentPage.value = 'login' // Both use AuthPage
+    currentPage.value = page === 'register' ? 'register' : 'login'
   } else {
     currentPage.value = page as AppPage
   }
+  // Update the browser URL
+  const targetPath = PAGE_PATHS[currentPage.value] || '/'
+  if (window.location.pathname !== targetPath) {
+    if (replace) {
+      window.history.replaceState({ page: currentPage.value }, '', targetPath)
+    } else {
+      window.history.pushState({ page: currentPage.value }, '', targetPath)
+    }
+  }
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// Handle browser back/forward buttons
+function handlePopState(e: PopStateEvent) {
+  const page = e.state?.page || pageFromPath(window.location.pathname)
+  if (page === 'login' || page === 'register') {
+    authInitialMode.value = page as 'login' | 'register'
+  }
+  currentPage.value = page as AppPage
 }
 
 // Show the full dashboard? (authenticated + active subscription)
@@ -87,7 +132,7 @@ function handleScroll() {
 function handleLogout() {
   auth.logout()
   showUserMenu.value = false
-  currentPage.value = 'landing'
+  navigateTo('landing', true)
 }
 
 async function handleChangePassword() {
@@ -125,6 +170,7 @@ async function loadDashboardData() {
 onMounted(async () => {
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('scroll', handleScroll)
+  window.addEventListener('popstate', handlePopState)
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement
     if (!target.closest('.user-menu-container')) {
@@ -140,13 +186,13 @@ onMounted(async () => {
   if (paymentStatus === 'success' && sessionId && auth.isAuthenticated) {
     // Verify the payment and activate subscription
     await auth.verifyPaymentSession(sessionId)
-    // Clean up URL
-    window.history.replaceState({}, '', window.location.pathname)
+    // Clean up URL → go to dashboard
+    window.history.replaceState({ page: 'dashboard' }, '', '/dashboard')
   } else if (paymentStatus === 'cancelled') {
-    window.history.replaceState({}, '', window.location.pathname)
+    window.history.replaceState({ page: 'pricing' }, '', '/pricing')
   }
 
-  // Determine initial page
+  // Determine initial page from URL + auth state
   currentPage.value = determineInitialPage()
 
   // If user is authenticated, refresh their profile to get latest subscription status
@@ -155,10 +201,19 @@ onMounted(async () => {
     // Re-check after profile refresh
     if (auth.hasActiveSubscription) {
       currentPage.value = 'dashboard'
-      await loadDashboardData()
     } else {
       currentPage.value = 'pricing'
     }
+    // Load dashboard data if needed
+    if (currentPage.value === 'dashboard') {
+      await loadDashboardData()
+    }
+  }
+
+  // Sync URL to match the determined page (use replaceState so we don't add a history entry)
+  const correctPath = PAGE_PATHS[currentPage.value] || '/'
+  if (window.location.pathname !== correctPath && !paymentStatus) {
+    window.history.replaceState({ page: currentPage.value }, '', correctPath)
   }
 })
 
@@ -167,10 +222,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
   if (loggedIn) {
     await auth.refreshUserProfile()
     if (auth.hasActiveSubscription) {
-      currentPage.value = 'dashboard'
+      navigateTo('dashboard', true)
       await loadDashboardData()
     } else {
-      currentPage.value = 'pricing'
+      navigateTo('pricing', true)
     }
   }
 })
@@ -185,7 +240,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
 
   <!-- ═══════ Auth pages (login / register) ═══════ -->
   <AuthPage
-    v-else-if="currentPage === 'login'"
+    v-else-if="currentPage === 'login' || currentPage === 'register'"
     :initial-mode="authInitialMode"
     @navigate="navigateTo"
   />

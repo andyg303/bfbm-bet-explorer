@@ -1,0 +1,12 @@
+## Production overrides — use on the server with:
+##   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+##
+## Binds ports to 127.0.0.1 only so they're only accessible via the host nginx reverse proxy.
+services:
+  backend:
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  frontend:
+    ports:
+      - "127.0.0.1:3080:80"

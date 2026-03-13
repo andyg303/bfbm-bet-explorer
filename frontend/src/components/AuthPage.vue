@@ -9,7 +9,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'navigate', page: 'landing' | 'pricing'): void
+  (e: 'navigate', page: 'landing' | 'pricing' | 'login' | 'register'): void
 }>()
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset'
@@ -76,6 +76,10 @@ function clearForm() {
 function switchMode(m: AuthMode) {
   clearForm()
   mode.value = m
+  // Emit navigate for login/register so the URL updates
+  if (m === 'login' || m === 'register') {
+    emit('navigate', m)
+  }
 }
 
 const displayError = computed(() => localError.value || auth.error)

@@ -85,7 +85,7 @@ def create_checkout_session(
 
     session = stripe.checkout.Session.create(
         customer=customer_id,
-        mode="payment",  # one-off payment, not recurring
+        mode="subscription",  # works with recurring prices
         payment_method_types=["card"],
         line_items=[{
             "price": plan["price_id"],
@@ -95,8 +95,14 @@ def create_checkout_session(
             "user_id": str(user.id),
             "plan": req.plan,
         },
-        success_url=f"{FRONTEND_URL}?payment=success&session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{FRONTEND_URL}?payment=cancelled",
+        subscription_data={
+            "metadata": {
+                "user_id": str(user.id),
+                "plan": req.plan,
+            },
+        },
+        success_url=f"{FRONTEND_URL}/dashboard?payment=success&session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{FRONTEND_URL}/pricing?payment=cancelled",
     )
 
     user.stripe_checkout_session_id = session.id

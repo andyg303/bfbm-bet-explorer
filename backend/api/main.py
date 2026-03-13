@@ -80,8 +80,10 @@ async def lifespan(app):
             "CREATE INDEX IF NOT EXISTS idx_user_strategy ON bets (user_id, strategy)"
         ))
 
-        # ── User subscription columns ──
+        # ── User admin + subscription columns ──
         user_cols = [c['name'] for c in insp.get_columns('users')]
+        if 'is_admin' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE NOT NULL"))
         if 'subscription_status' not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN subscription_status VARCHAR DEFAULT 'inactive' NOT NULL"))
         if 'subscription_plan' not in user_cols:
@@ -194,6 +196,7 @@ def _user_dict(user: User) -> dict:
         "id": user.id,
         "email": user.email,
         "display_name": user.display_name,
+        "is_admin": user.is_admin or False,
         "subscription_status": user.subscription_status or "inactive",
         "subscription_plan": user.subscription_plan,
         "subscription_expires": (
@@ -205,7 +208,10 @@ def _user_dict(user: User) -> dict:
 async def require_active_subscription(
     user: User = Depends(get_current_user),
 ) -> User:
-    """Dependency: reject requests from users without an active subscription."""
+    """Dependency: reject requests from users without an active subscription.
+    Admins (is_admin=True) bypass all subscription checks."""
+    if user.is_admin:
+        return user
     if user.subscription_status != "active":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -248,8 +254,8 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    access_token = create_access_token({"sub": user.id})
-    refresh_token = create_refresh_token({"sub": user.id})
+    access_token = create_access_token({"sub": str(user.id)})
+    refresh_token = create_refresh_token({"sub": str(user.id)})
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -275,8 +281,8 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
             detail="Account is deactivated",
         )
 
-    access_token = create_access_token({"sub": user.id})
-    refresh_token = create_refresh_token({"sub": user.id})
+    access_token = create_access_token({"sub": str(user.id)})
+    refresh_token = create_refresh_token({"sub": str(user.id)})
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -289,19 +295,20 @@ def refresh_token(req: RefreshRequest, db: Session = Depends(get_db)):
     """Get a new access token using a valid refresh token."""
     try:
         payload = jwt.decode(req.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
+        sub = payload.get("sub")
         token_type = payload.get("type")
-        if user_id is None or token_type != "refresh":
+        if sub is None or token_type != "refresh":
             raise HTTPException(status_code=401, detail="Invalid refresh token")
-    except JWTError:
+        user_id = int(sub)
+    except (JWTError, ValueError, TypeError):
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
     user = db.query(User).filter(User.id == user_id, User.is_active == True).first()  # noqa: E712
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    access_token = create_access_token({"sub": user.id})
-    new_refresh = create_refresh_token({"sub": user.id})
+    access_token = create_access_token({"sub": str(user.id)})
+    new_refresh = create_refresh_token({"sub": str(user.id)})
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh,
