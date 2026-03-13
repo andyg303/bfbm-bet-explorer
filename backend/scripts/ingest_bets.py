@@ -32,6 +32,25 @@ def sanitize_currency(value):
     except ValueError:
         return None
 
+def sanitize_strategy_name(name):
+    """Clean strategy names by replacing encoding artefacts and non-ASCII
+    characters (e.g. £ rendered as \\ufffd or ï¿½) with their best ASCII
+    equivalents.  The £ sign is kept as the actual £ character so
+    that it displays correctly across all platforms."""
+    if pd.isna(name) or not name:
+        return None
+    s = str(name).strip()
+    # Replace common mojibake / replacement-character sequences
+    s = s.replace('\ufffd', '£')       # U+FFFD replacement character -> £
+    s = s.replace('ï¿½', '£')           # UTF-8 mojibake of replacement char
+    s = s.replace('Â£', '£')            # Double-encoded UTF-8 £
+    s = s.replace('Ã‚Â£', '£')          # Triple-encoded UTF-8 £
+    # Remove any remaining non-printable / control characters
+    s = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', s)
+    # Collapse multiple spaces
+    s = re.sub(r'\s{2,}', ' ', s)
+    return s
+
 def normalize_event_name(event_name):
     """Convert event name to kebab-case format and standardize names"""
     if pd.isna(event_name) or not event_name:
@@ -86,8 +105,14 @@ def read_csv(filepath: str) -> 'pd.DataFrame':
     # Last resort: replace undecodable bytes
     return pd.read_csv(filepath, encoding='latin-1', errors='replace')
 
-def ingest_csv_file(filepath: str, db: Session):
-    """Ingest a single CSV file into the database"""
+def ingest_csv_file(filepath: str, db: Session, user_id: int = None):
+    """Ingest a single CSV file into the database.
+    
+    Args:
+        filepath: Path to CSV file.
+        db: SQLAlchemy session.
+        user_id: The authenticated user's ID. All bets will be tagged to this user.
+    """
     print(f"Processing {filepath}...")
     
     df = read_csv(filepath)
@@ -116,7 +141,10 @@ def ingest_csv_file(filepath: str, db: Session):
             continue
         
         bet_id = str(row['Bet Id'])
-        existing = db.query(Bet).filter(Bet.bet_id == bet_id).first()
+        if user_id is not None:
+            existing = db.query(Bet).filter(Bet.bet_id == bet_id, Bet.user_id == user_id).first()
+        else:
+            existing = db.query(Bet).filter(Bet.bet_id == bet_id).first()
         
         lay_liability = None
         if row['Bet type'] == 'LAY' and pd.notna(row['Matched amount']) and pd.notna(row['Avg. price matched']):
@@ -153,7 +181,7 @@ def ingest_csv_file(filepath: str, db: Session):
             'price_requested': float(row['Price requested']) if pd.notna(row['Price requested']) else None,
             'status': str(row['Status']) if pd.notna(row['Status']) else None,
             'profit_loss': profit_loss_with_commission,
-            'strategy': str(row['Strategy']) if pd.notna(row['Strategy']) else None,
+            'strategy': sanitize_strategy_name(row['Strategy']),
             'bsp': float(row['BSP']) if pd.notna(row['BSP']) else None,
             'total_matched_on_runner': row['Total matched on runner'],
             'total_matched_on_market': row['Total matched on market'],
@@ -171,13 +199,16 @@ def ingest_csv_file(filepath: str, db: Session):
         }
         
         if existing:
-            # Update existing bet
+            # Update existing bet, but NEVER overwrite is_deleted, is_archived, or user_id
             for key, value in bet_data.items():
-                if key != 'bet_id':  # Don't update the primary key
-                    setattr(existing, key, value)
+                if key in ('bet_id', 'is_deleted', 'is_archived', 'user_id'):
+                    continue
+                setattr(existing, key, value)
             updated += 1
         else:
-            # Insert new bet
+            # Insert new bet — tagged to the authenticated user
+            if user_id is not None:
+                bet_data['user_id'] = user_id
             bet = Bet(**bet_data)
             db.add(bet)
             inserted += 1

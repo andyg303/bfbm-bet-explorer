@@ -178,6 +178,18 @@ async function exportToCSV() {
   link.click()
   document.body.removeChild(link)
 }
+
+const deletingId = ref<number | null>(null)
+
+async function handleDelete(bet: any) {
+  if (!confirm(`Delete this bet (${bet.selection} @ ${bet.avg_price_matched?.toFixed(2)})? It will be hidden from all views but kept in the database.`)) return
+  deletingId.value = bet.id
+  try {
+    await betStore.deleteBet(bet.id)
+  } finally {
+    deletingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -265,6 +277,9 @@ async function exportToCSV() {
             <th @click="sort('competition')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
               Competition <span v-if="sortKey === 'competition'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
             </th>
+            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+              Delete
+            </th>
           </tr>
         </thead>
         <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -316,9 +331,25 @@ async function exportToCSV() {
             </td>
             <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ bet.market_type }}</td>
             <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">{{ bet.competition }}</td>
+            <td class="px-4 py-3 text-center">
+              <button
+                @click="handleDelete(bet)"
+                :disabled="deletingId === bet.id"
+                title="Soft-delete this bet"
+                class="p-1 rounded text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg v-if="deletingId !== bet.id" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                </svg>
+              </button>
+            </td>
           </tr>
           <tr v-if="!bets || bets.length === 0">
-            <td colspan="15" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No bets found</td>
+            <td colspan="16" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No bets found</td>
           </tr>
         </tbody>
       </table>

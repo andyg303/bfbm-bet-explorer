@@ -3,12 +3,14 @@ import { computed, ref } from 'vue'
 import { useBetStore } from '../stores/betStore'
 import type { StrategyStats } from '../services/api'
 import StrategyFilters from './StrategyFilters.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 const betStore = useBetStore()
 
 const sortKey = ref<keyof StrategyStats>('total_pl')
 const sortDirection = ref<'asc' | 'desc'>('desc')
 const selectedStrategies = ref<Set<string>>(new Set())
+const showArchiveDialog = ref(false)
 
 const strategyFilters = ref({
   nameSearch: '',
@@ -156,14 +158,30 @@ function clearFilters() {
     maxBspFill: null
   }
 }
+
+async function archiveSelected() {
+  await betStore.archiveStrategies(Array.from(selectedStrategies.value))
+  selectedStrategies.value.clear()
+  showArchiveDialog.value = false
+}
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+  <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-700">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Strategy Performance</h2>
         <div class="flex gap-2">
+          <button 
+            @click="showArchiveDialog = true" 
+            :disabled="selectedStrategies.size === 0"
+            class="inline-flex items-center gap-1.5 px-3 py-1 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed rounded transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+            </svg>
+            Archive ({{ selectedStrategies.size }})
+          </button>
           <button 
             @click="applySelection" 
             :disabled="selectedStrategies.size === 0"
@@ -275,5 +293,18 @@ function clearFilters() {
         </tbody>
       </table>
     </div>
+
+    <!-- Archive Confirmation Dialog -->
+    <ConfirmDialog
+      :open="showArchiveDialog"
+      title="Archive Strategies"
+      :message="`Are you sure you want to archive ${selectedStrategies.size} strateg${selectedStrategies.size === 1 ? 'y' : 'ies'}? All bets within ${selectedStrategies.size === 1 ? 'it' : 'them'} will be hidden from the dashboard. You can restore them at any time from the Archive.`"
+      confirm-label="Archive"
+      cancel-label="Cancel"
+      variant="warning"
+      icon="archive"
+      @confirm="archiveSelected"
+      @cancel="showArchiveDialog = false"
+    />
   </div>
 </template>

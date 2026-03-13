@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit } from '../services/api'
+import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit, MonthlyPLResponse, ArchivedStrategy } from '../services/api'
 import * as api from '../services/api'
 
 export const useBetStore = defineStore('bet', () => {
@@ -11,6 +11,8 @@ export const useBetStore = defineStore('bet', () => {
   const plOverTime = ref<PLDataPoint[]>([])
   const summaryStats = ref<any>(null)
   const oddsBandsData = ref<OddsBandProfit[]>([])
+  const monthlyPLData = ref<MonthlyPLResponse | null>(null)
+  const archivedStrategies = ref<ArchivedStrategy[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -104,6 +106,18 @@ export const useBetStore = defineStore('bet', () => {
     }
   }
 
+  async function loadMonthlyPL() {
+    try {
+      loading.value = true
+      const filtersWithStaking = { ...filters.value, ...stakingParams.value }
+      monthlyPLData.value = await api.getMonthlyPL(filtersWithStaking)
+    } catch (e: any) {
+      error.value = e.message
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function recalculateWithStaking() {
     try {
       loading.value = true
@@ -115,6 +129,84 @@ export const useBetStore = defineStore('bet', () => {
     }
   }
 
+  async function deleteBet(id: number) {
+    try {
+      await api.deleteBet(id)
+      // Remove from local list immediately for a snappy UI, then refresh stats
+      bets.value = bets.value.filter((b) => b.id !== id)
+      totalBets.value = Math.max(0, totalBets.value - 1)
+      await refreshAll()
+    } catch (e: any) {
+      error.value = e.message
+    }
+  }
+
+  async function archiveStrategies(strategies: string[]) {
+    try {
+      loading.value = true
+      await api.archiveStrategies(strategies)
+      await loadFilterOptions()
+      await refreshAll()
+      await loadArchivedStrategies()
+    } catch (e: any) {
+      error.value = e.message
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function restoreStrategies(strategies: string[]) {
+    try {
+      loading.value = true
+      await api.restoreStrategies(strategies)
+      await loadFilterOptions()
+      await refreshAll()
+      await loadArchivedStrategies()
+    } catch (e: any) {
+      error.value = e.message
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function loadArchivedStrategies() {
+    try {
+      archivedStrategies.value = await api.getArchivedStrategies()
+    } catch (e: any) {
+      error.value = e.message
+    }
+  }
+
+  async function sanitizeStrategies() {
+    try {
+      loading.value = true
+      const result = await api.sanitizeStrategies()
+      if (result.rows_fixed > 0) {
+        await loadFilterOptions()
+        await refreshAll()
+      }
+      return result
+    } catch (e: any) {
+      error.value = e.message
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function migrateDeletedToArchived() {
+    try {
+      const result = await api.migrateDeletedToArchived()
+      if (result.migrated_bets > 0) {
+        await loadFilterOptions()
+        await refreshAll()
+        await loadArchivedStrategies()
+      }
+      return result
+    } catch (e: any) {
+      error.value = e.message
+    }
+  }
+
   async function refreshAll() {
     await Promise.all([
       loadSummaryStats(),
@@ -122,6 +214,7 @@ export const useBetStore = defineStore('bet', () => {
       loadBets(),
       loadPLOverTime(),
       loadOddsBandsData(),
+      loadMonthlyPL(),
     ])
   }
 
@@ -133,6 +226,8 @@ export const useBetStore = defineStore('bet', () => {
     plOverTime,
     summaryStats,
     oddsBandsData,
+    monthlyPLData,
+    archivedStrategies,
     loading,
     error,
     filters,
@@ -145,7 +240,14 @@ export const useBetStore = defineStore('bet', () => {
     loadPLOverTime,
     loadSummaryStats,
     loadOddsBandsData,
+    loadMonthlyPL,
     recalculateWithStaking,
+    deleteBet,
+    archiveStrategies,
+    restoreStrategies,
+    loadArchivedStrategies,
+    sanitizeStrategies,
+    migrateDeletedToArchived,
     refreshAll,
   }
 })

@@ -39,24 +39,23 @@ const chartData = computed(() => {
     }
   }
 
+  // Determine line colour based on final cumulative P/L (green if profitable, red if not)
+  const lastCumPL = plData.value[plData.value.length - 1]?.cumulative_pl ?? 0
+  const lineColor = lastCumPL >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+  const fillColor = lastCumPL >= 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'
+
   return {
     labels: plData.value.map(d => d.date),
     datasets: [
       {
         label: 'Cumulative P/L',
         data: plData.value.map(d => d.cumulative_pl),
-        borderColor: 'rgb(59, 130, 246)',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        borderColor: lineColor,
+        backgroundColor: fillColor,
         fill: true,
-        tension: 0.4
-      },
-      {
-        label: 'Daily P/L',
-        data: plData.value.map(d => d.daily_pl),
-        borderColor: 'rgb(16, 185, 129)',
-        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-        fill: false,
-        tension: 0.4
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2
       }
     ]
   }
