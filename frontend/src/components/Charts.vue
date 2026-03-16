@@ -114,7 +114,7 @@ const chartOptions = computed(() => ({
 
 <template>
   <div class="glass-card p-5">
-    <h2 class="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2 mb-4">
+    <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2 mb-4">
       <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>
       Profit/Loss Over Time
     </h2>

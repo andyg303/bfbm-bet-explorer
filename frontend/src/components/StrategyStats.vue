@@ -169,7 +169,7 @@ async function archiveSelected() {
 <template>
   <div class="glass-card">
     <!-- Header -->
-    <div class="px-6 py-4 border-b border-white/5">
+    <div class="px-6 py-4 border-b border-gray-200 dark:border-white/5">
       <div class="flex justify-between items-center mb-4">
         <div class="flex items-center gap-3">
           <div class="w-8 h-8 rounded-lg bg-teal-500/10 flex items-center justify-center">
@@ -177,7 +177,7 @@ async function archiveSelected() {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
           </div>
-          <h2 class="text-base font-semibold text-white tracking-tight">Strategy Performance</h2>
+          <h2 class="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Strategy Performance</h2>
         </div>
         <div class="flex gap-2">
           <button 
@@ -199,7 +199,7 @@ async function archiveSelected() {
           </button>
           <button 
             @click="clearSelection" 
-            class="px-3 py-1.5 text-xs font-medium text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg transition-all"
+            class="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg transition-all"
           >
             Clear
           </button>
@@ -218,7 +218,7 @@ async function archiveSelected() {
                 type="checkbox" 
                 :checked="selectedStrategies.size === stats.length && stats.length > 0"
                 @change="toggleAll"
-                class="rounded border-gray-600 bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
+                class="rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
               >
             </th>
             <th @click="sort('strategy')" class="cursor-pointer hover:text-teal-400 transition-colors">
@@ -267,10 +267,10 @@ async function archiveSelected() {
                 type="checkbox" 
                 :checked="selectedStrategies.has(stat.strategy)"
                 @change="toggleStrategy(stat.strategy)"
-                class="rounded border-gray-600 bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
+                class="rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
               >
             </td>
-            <td class="font-medium text-white">{{ stat.strategy }}</td>
+            <td class="font-medium text-gray-900 dark:text-white">{{ stat.strategy }}</td>
             <td class="font-mono">{{ stat.num_bets }}</td>
             <td class="font-mono font-medium" :class="stat.total_pl >= 0 ? 'text-emerald-400' : 'text-rose-400'">
               £{{ stat.total_pl.toLocaleString() }}

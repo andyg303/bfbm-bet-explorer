@@ -90,7 +90,7 @@ function close() {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
           </div>
-          <h3 class="text-sm font-semibold text-white">Ingest Bet Data</h3>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Ingest Bet Data</h3>
         </div>
         <button @click="close" class="text-gray-500 hover:text-gray-300 transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -114,7 +114,7 @@ function close() {
 
       <!-- File picker area -->
       <div
-        class="border border-dashed border-white/10 rounded-lg p-4 text-center cursor-pointer hover:border-teal-500/40 hover:bg-teal-500/5 transition-all mb-4"
+        class="border border-dashed border-gray-300 dark:border-white/10 rounded-lg p-4 text-center cursor-pointer hover:border-teal-500/40 hover:bg-teal-500/5 transition-all mb-4"
         @click="openFilePicker"
       >
         <svg class="w-8 h-8 mx-auto text-gray-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -122,7 +122,7 @@ function close() {
             d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
         <p v-if="!selectedFile" class="text-xs text-gray-500">
-          Click to select a <strong class="text-gray-400">.csv</strong> file
+          Click to select a <strong class="text-gray-600 dark:text-gray-400">.csv</strong> file
         </p>
         <p v-else class="text-xs font-medium text-teal-400 truncate">
           {{ selectedFile.name }}
@@ -136,7 +136,7 @@ function close() {
           <span>Uploading & ingesting…</span>
           <span class="font-mono text-teal-400">{{ uploadProgress }}%</span>
         </div>
-        <div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+        <div class="w-full bg-gray-100 dark:bg-white/5 rounded-full h-1.5 overflow-hidden">
           <div
             class="bg-gradient-to-r from-teal-500 to-emerald-400 h-1.5 rounded-full transition-all duration-300"
             :style="{ width: uploadProgress + '%' }"
@@ -153,15 +153,15 @@ function close() {
           Ingestion complete!
         </div>
         <div class="grid grid-cols-3 gap-2 text-center">
-          <div class="bg-white/5 rounded-lg p-2">
+          <div class="bg-gray-100 dark:bg-white/5 rounded-lg p-2">
             <div class="text-base font-bold font-mono text-emerald-400">{{ result.inserted.toLocaleString() }}</div>
             <div class="text-[10px] text-gray-500 uppercase tracking-wider">New</div>
           </div>
-          <div class="bg-white/5 rounded-lg p-2">
+          <div class="bg-gray-100 dark:bg-white/5 rounded-lg p-2">
             <div class="text-base font-bold font-mono text-sky-400">{{ result.updated.toLocaleString() }}</div>
             <div class="text-[10px] text-gray-500 uppercase tracking-wider">Updated</div>
           </div>
-          <div class="bg-white/5 rounded-lg p-2">
+          <div class="bg-gray-100 dark:bg-white/5 rounded-lg p-2">
             <div class="text-base font-bold font-mono text-gray-400">{{ result.skipped.toLocaleString() }}</div>
             <div class="text-[10px] text-gray-500 uppercase tracking-wider">Skipped</div>
           </div>
@@ -196,7 +196,7 @@ function close() {
         <button
           @click="openFilePicker"
           :disabled="status === 'uploading'"
-          class="px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-30 text-gray-300 text-xs font-medium transition-all"
+          class="px-4 py-2 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 text-gray-600 dark:text-gray-300 text-xs font-medium transition-all"
         >
           Browse
         </button>

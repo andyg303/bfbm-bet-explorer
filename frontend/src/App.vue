@@ -250,14 +250,14 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
     v-else-if="currentPage === 'pricing'"
     @navigate="navigateTo"
   />  <!-- ═══════ Dashboard (authenticated + active subscription) ═══════ -->
-  <div v-else-if="showDashboard" class="min-h-screen bg-[#0b0f1a] text-gray-200 transition-colors duration-200">
+  <div v-else-if="showDashboard" class="min-h-screen bg-gray-50 dark:bg-[#0b0f1a] text-gray-800 dark:text-gray-200 transition-colors duration-200">
     <!-- ═══════════ Top Navbar ═══════════ -->
-    <nav class="sticky top-0 z-50 bg-[#0b0f1a]/80 backdrop-blur-2xl border-b border-gray-800/40">
+    <nav class="sticky top-0 z-50 bg-white/80 dark:bg-[#0b0f1a]/80 backdrop-blur-2xl border-b border-gray-200 dark:border-gray-800/40">
       <div class="max-w-[1920px] mx-auto px-4 sm:px-6">
         <div class="flex h-14 items-center justify-between">
           <!-- Left: Menu button + Logo -->
           <div class="flex items-center gap-3">
-            <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors" aria-label="Toggle sidebar">
+            <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors" aria-label="Toggle sidebar">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path v-if="!sidebarOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -268,8 +268,8 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
                 <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
               </div>
               <div class="hidden sm:block">
-                <h1 class="text-base font-bold text-white leading-tight tracking-tight">BFBM<span class="text-teal-400">Explorer</span></h1>
-                <p class="text-[10px] text-gray-500 font-medium font-mono -mt-0.5">Analytics Dashboard</p>
+                <h1 class="text-base font-bold text-gray-900 dark:text-white leading-tight tracking-tight">BFBM<span class="text-teal-600 dark:text-teal-400">Explorer</span></h1>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 font-medium font-mono -mt-0.5">Analytics Dashboard</p>
               </div>
             </div>
           </div>
@@ -294,7 +294,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
           <!-- Right: Actions -->
           <div class="flex items-center gap-1.5">
             <IngestData />
-            <button @click="toggleDark" class="relative p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-all duration-200" :title="isDark ? 'Light Mode' : 'Dark Mode'">
+            <button @click="toggleDark" class="relative p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-all duration-200" :title="isDark ? 'Light Mode' : 'Dark Mode'">
               <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="rotate-90 opacity-0" enter-to-class="rotate-0 opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="rotate-0 opacity-100" leave-to-class="-rotate-90 opacity-0" mode="out-in">
                 <svg v-if="isDark" key="sun" class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                 <svg v-else key="moon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
@@ -303,17 +303,17 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
 
             <!-- User menu -->
             <div class="relative user-menu-container">
-              <button @click.stop="showUserMenu = !showUserMenu" class="flex items-center gap-2 p-1.5 pr-3 rounded-lg text-gray-400 hover:bg-gray-800/50 transition-colors">
+              <button @click.stop="showUserMenu = !showUserMenu" class="flex items-center gap-2 p-1.5 pr-3 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors">
                 <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style="background: linear-gradient(135deg, #14b8a6, #0ea5e9);">
                   {{ auth.displayName?.charAt(0)?.toUpperCase() || '?' }}
                 </div>
-                <span class="hidden sm:block text-sm font-medium text-gray-300 max-w-[120px] truncate">{{ auth.displayName }}</span>
-                <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                <span class="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-300 max-w-[120px] truncate">{{ auth.displayName }}</span>
+                <svg class="w-4 h-4 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
               </button>
               <Transition enter-active-class="transition ease-out duration-100" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100" leave-active-class="transition ease-in duration-75" leave-from-class="opacity-100 scale-100" leave-to-class="opacity-0 scale-95">
-                <div v-if="showUserMenu" class="absolute right-0 mt-2 w-64 rounded-xl bg-[#111827] border border-gray-800 shadow-2xl shadow-black/40 z-50 overflow-hidden">
-                  <div class="px-4 py-3 border-b border-gray-800">
-                    <p class="text-sm font-medium text-white truncate">{{ auth.user?.display_name }}</p>
+                <div v-if="showUserMenu" class="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#111827] border border-gray-200 dark:border-gray-800 shadow-xl dark:shadow-2xl dark:shadow-black/40 z-50 overflow-hidden">
+                  <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+                    <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ auth.user?.display_name }}</p>
                     <p class="text-xs text-gray-500 truncate">{{ auth.user?.email }}</p>
                     <div class="mt-1.5 flex items-center gap-1.5">
                       <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold" :class="auth.hasActiveSubscription ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'">
@@ -323,7 +323,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
                     </div>
                   </div>
                   <div class="py-1">
-                    <button @click="showChangePassword = true; showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-400 hover:text-white hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
+                    <button @click="showChangePassword = true; showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                       Change Password
                     </button>
@@ -340,7 +340,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
       </div>
 
       <!-- Mobile navigation tabs -->
-      <div class="sm:hidden border-t border-gray-800/40 px-4 py-2">
+      <div class="sm:hidden border-t border-gray-200 dark:border-gray-800/40 px-4 py-2">
         <div class="pill-nav w-full">
           <button @click="activeTab = 'dashboard'" :class="[activeTab === 'dashboard' ? 'active' : '', 'flex-1']">Dashboard</button>
           <button @click="activeTab = 'archive'" :class="[activeTab === 'archive' ? 'active' : '', 'flex-1']">
@@ -358,7 +358,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
         <div class="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
           <aside class="lg:col-span-1" :class="{ 'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:static lg:bg-transparent lg:backdrop-blur-none': sidebarOpen }">
             <div v-if="sidebarOpen" class="absolute inset-0 lg:hidden" @click="sidebarOpen = false" />
-            <div class="relative h-full lg:h-auto overflow-y-auto bg-[#0b0f1a] lg:bg-transparent max-w-sm lg:max-w-none" :class="{ 'p-4 lg:p-0': sidebarOpen }">
+            <div class="relative h-full lg:h-auto overflow-y-auto bg-gray-50 dark:bg-[#0b0f1a] lg:bg-transparent max-w-sm lg:max-w-none" :class="{ 'p-4 lg:p-0': sidebarOpen }">
               <FilterPanel />
               <div class="mt-6">
                 <StakingCalculator />
@@ -381,21 +381,21 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
     </main>
 
     <!-- ═══════════ Footer ═══════════ -->
-    <footer class="mt-12 border-t border-gray-800/40 bg-[#0b0f1a]/80">
+    <footer class="mt-12 border-t border-gray-200 dark:border-gray-800/40 bg-white/60 dark:bg-[#0b0f1a]/80">
       <div class="max-w-[1920px] mx-auto px-4 sm:px-6 py-5">
         <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div class="flex items-center gap-2 text-sm text-gray-600">
+          <div class="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-600">
             <div class="w-5 h-5 rounded flex items-center justify-center" style="background: linear-gradient(135deg, #14b8a6, #0ea5e9);">
               <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
             </div>
-            <span class="text-gray-500">BFBM<span class="text-teal-500">Explorer</span></span>
+            <span class="text-gray-400 dark:text-gray-500">BFBM<span class="text-teal-600 dark:text-teal-500">Explorer</span></span>
           </div>
-          <div class="flex items-center gap-4 text-xs text-gray-600 font-mono">
+          <div class="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-600 font-mono">
             <span>{{ betStore.summaryStats?.num_bets?.toLocaleString() || 0 }} bets</span>
-            <span class="text-gray-700">•</span>
+            <span class="text-gray-300 dark:text-gray-700">•</span>
             <span>{{ betStore.strategyStats?.length || 0 }} strategies</span>
-            <span class="text-gray-700">•</span>
-            <kbd class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-800/50 border border-gray-700/50 text-[10px] font-mono text-gray-500">⌘K</kbd>
+            <span class="text-gray-300 dark:text-gray-700">•</span>
+            <kbd class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 text-[10px] font-mono text-gray-400 dark:text-gray-500">⌘K</kbd>
           </div>
         </div>
       </div>
@@ -420,12 +420,12 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
       <div v-if="showChangePassword" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="showChangePassword = false; cpError = ''; cpSuccess = ''">
         <div class="glass-card w-full max-w-md mx-4 overflow-hidden">
           <!-- Header -->
-          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800/60">
-            <h3 class="text-lg font-semibold text-white flex items-center gap-2">
-              <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+          <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800/60">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <svg class="w-5 h-5 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
               Change Password
             </h3>
-            <button @click="showChangePassword = false; cpError = ''; cpSuccess = ''" class="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors">
+            <button @click="showChangePassword = false; cpError = ''; cpSuccess = ''" class="p-1.5 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
@@ -436,20 +436,20 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
             <div v-if="cpSuccess" class="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-400">{{ cpSuccess }}</div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-400 mb-1">Current Password</label>
+              <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Current Password</label>
               <input v-model="cpCurrentPassword" type="password" required class="input-field" placeholder="Enter current password" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-400 mb-1">New Password</label>
+              <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">New Password</label>
               <input v-model="cpNewPassword" type="password" required minlength="8" class="input-field" placeholder="Enter new password" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-400 mb-1">Confirm New Password</label>
+              <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Confirm New Password</label>
               <input v-model="cpConfirm" type="password" required class="input-field" placeholder="Confirm new password" />
             </div>
 
             <div class="flex gap-3 pt-2">
-              <button type="button" @click="showChangePassword = false; cpError = ''; cpSuccess = ''" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-700 text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 font-medium text-sm transition-colors">Cancel</button>
+              <button type="button" @click="showChangePassword = false; cpError = ''; cpSuccess = ''" class="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50 font-medium text-sm transition-colors">Cancel</button>
               <button type="submit" class="flex-1 btn-glow !py-2.5 text-sm">Update Password</button>
             </div>
           </form>

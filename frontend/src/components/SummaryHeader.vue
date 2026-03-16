@@ -26,7 +26,7 @@ const numStrategies = computed(() => betStore.strategyStats?.length || 0)
         </div>
         <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Tips</div>
       </div>
-      <div class="mt-2.5 text-2xl font-bold text-white font-mono">{{ (stats.num_bets || 0).toLocaleString() }}</div>
+      <div class="mt-2.5 text-2xl font-bold text-gray-900 dark:text-white font-mono">{{ (stats.num_bets || 0).toLocaleString() }}</div>
     </div>
 
     <div class="stat-card">
@@ -36,7 +36,7 @@ const numStrategies = computed(() => betStore.strategyStats?.length || 0)
         </div>
         <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Winners</div>
       </div>
-      <div class="mt-2.5 text-2xl font-bold text-white font-mono">{{ (stats.num_wins || 0).toLocaleString() }}</div>
+      <div class="mt-2.5 text-2xl font-bold text-gray-900 dark:text-white font-mono">{{ (stats.num_wins || 0).toLocaleString() }}</div>
     </div>
 
     <div class="stat-card">
@@ -46,7 +46,7 @@ const numStrategies = computed(() => betStore.strategyStats?.length || 0)
         </div>
         <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Strike Rate</div>
       </div>
-      <div class="mt-2.5 text-2xl font-bold text-white font-mono">{{ (stats.win_rate || 0).toFixed(2) }}%</div>
+      <div class="mt-2.5 text-2xl font-bold text-gray-900 dark:text-white font-mono">{{ (stats.win_rate || 0).toFixed(2) }}%</div>
     </div>
 
     <div class="stat-card">
@@ -68,7 +68,7 @@ const numStrategies = computed(() => betStore.strategyStats?.length || 0)
         </div>
         <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Invested</div>
       </div>
-      <div class="mt-2.5 text-2xl font-bold text-white font-mono">{{ (stats.total_staked || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}</div>
+      <div class="mt-2.5 text-2xl font-bold text-gray-900 dark:text-white font-mono">{{ (stats.total_staked || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) }}</div>
     </div>
 
     <div class="stat-card">
@@ -88,7 +88,7 @@ const numStrategies = computed(() => betStore.strategyStats?.length || 0)
         </div>
         <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Strategies</div>
       </div>
-      <div class="mt-2.5 text-2xl font-bold text-white font-mono">{{ numStrategies }}</div>
+      <div class="mt-2.5 text-2xl font-bold text-gray-900 dark:text-white font-mono">{{ numStrategies }}</div>
     </div>
   </div>
 </template>

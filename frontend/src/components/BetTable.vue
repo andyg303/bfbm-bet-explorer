@@ -194,10 +194,10 @@ async function handleDelete(bet: any) {
 
 <template>
   <div class="glass-card overflow-hidden">
-    <div class="px-5 py-4 border-b border-gray-800/60">
+    <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-800/60">
       <div class="flex flex-wrap justify-between items-center gap-3">
         <div class="flex items-center gap-4">
-          <h2 class="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+          <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
             <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
             Bets
           </h2>
@@ -213,9 +213,9 @@ async function handleDelete(bet: any) {
           <button @click="copyToClipboard" class="px-3 py-1.5 text-xs font-medium text-teal-400 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 rounded-lg transition-colors">Copy All</button>
           <button @click="exportToCSV" class="px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg transition-colors">Export CSV</button>
           <span class="text-xs text-gray-500 font-mono">{{ totalBets.toLocaleString() }} bets</span>
-          <button @click="prevPage" :disabled="currentPage === 0" class="px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white bg-gray-800/50 border border-gray-700/50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Prev</button>
-          <span class="text-xs text-gray-400 font-mono">{{ currentPage + 1 }}/{{ totalPages }}</span>
-          <button @click="nextPage" :disabled="currentPage >= totalPages - 1" class="px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white bg-gray-800/50 border border-gray-700/50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
+          <button @click="prevPage" :disabled="currentPage === 0" class="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-700/50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Prev</button>
+          <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">{{ currentPage + 1 }}/{{ totalPages }}</span>
+          <button @click="nextPage" :disabled="currentPage >= totalPages - 1" class="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-700/50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
         </div>
       </div>
     </div>
@@ -245,9 +245,9 @@ async function handleDelete(bet: any) {
         <tbody>
           <tr v-for="bet in bets" :key="bet.id">
             <td class="whitespace-nowrap text-gray-500 font-mono text-xs">{{ formatDate(bet.settled_date) }}</td>
-            <td class="text-gray-300 max-w-[140px] truncate">{{ bet.strategy }}</td>
-            <td class="text-gray-300 max-w-[140px] truncate">{{ bet.event }}</td>
-            <td class="whitespace-nowrap text-gray-300">{{ bet.selection }}</td>
+            <td class="text-gray-600 dark:text-gray-300 max-w-[140px] truncate">{{ bet.strategy }}</td>
+            <td class="text-gray-600 dark:text-gray-300 max-w-[140px] truncate">{{ bet.event }}</td>
+            <td class="whitespace-nowrap text-gray-600 dark:text-gray-300">{{ bet.selection }}</td>
             <td class="whitespace-nowrap">
               <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md" :class="bet.bet_type === 'BACK' ? 'bg-sky-500/15 text-sky-400 border border-sky-500/20' : 'bg-rose-500/15 text-rose-400 border border-rose-500/20'">{{ bet.bet_type }}</span>
             </td>
@@ -299,7 +299,7 @@ async function handleDelete(bet: any) {
       </table>
     </div>
 
-    <div class="px-5 py-3 border-t border-gray-800/60 text-center">
+    <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-800/60 text-center">
       <span class="text-xs text-gray-600 font-mono">Showing {{ bets.length }} of {{ totalBets.toLocaleString() }} bets</span>
     </div>
   </div>

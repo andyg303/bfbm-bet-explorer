@@ -50,9 +50,9 @@ const stats = [
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#0b0f1a] dark:bg-[#0b0f1a] text-gray-200 transition-colors duration-200">
+  <div class="min-h-screen bg-gray-50 dark:bg-[#0b0f1a] text-gray-800 dark:text-gray-200 transition-colors duration-200">
     <!-- ═══════════ Navbar ═══════════ -->
-    <nav class="sticky top-0 z-50 bg-[#0b0f1a]/80 backdrop-blur-2xl border-b border-gray-800/40">
+    <nav class="sticky top-0 z-50 bg-white/80 dark:bg-[#0b0f1a]/80 backdrop-blur-2xl border-b border-gray-200 dark:border-gray-800/40">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 items-center justify-between">
           <div class="flex items-center gap-3">
@@ -61,12 +61,12 @@ const stats = [
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <span class="text-lg font-bold text-white tracking-tight">BFBM<span class="text-teal-400 ml-0.5">Explorer</span></span>
+            <span class="text-lg font-bold text-gray-900 dark:text-white tracking-tight">BFBM<span class="text-teal-600 dark:text-teal-400 ml-0.5">Explorer</span></span>
           </div>
           <div class="flex items-center gap-3">
             <button
               @click="toggleDark"
-              class="p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors"
+              class="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors"
             >
               <svg v-if="isDark" class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -77,7 +77,7 @@ const stats = [
             </button>
             <button
               @click="$emit('navigate', 'login')"
-              class="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors"
+              class="px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
             >
               Sign In
             </button>
@@ -109,12 +109,12 @@ const stats = [
             Betfair Betting Analytics
           </div>
 
-          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.05] animate-fade-in-up stagger-1">
+          <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-gray-900 dark:text-white leading-[1.05] animate-fade-in-up stagger-1">
             Turn your bets into
             <span class="gradient-text"> profitable insights</span>
           </h1>
 
-          <p class="mt-7 text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed animate-fade-in-up stagger-2">
+          <p class="mt-7 text-lg sm:text-xl text-gray-500 dark:text-gray-400 max-w-2xl mx-auto leading-relaxed animate-fade-in-up stagger-2">
             The most powerful analytics dashboard for Betfair & BFBM users.
             Track every strategy, model every staking plan, and find your edge.
           </p>
@@ -129,7 +129,7 @@ const stats = [
             </button>
             <button
               @click="$emit('navigate', 'login')"
-              class="px-8 py-3.5 text-base font-semibold text-gray-300 bg-gray-800/50 border border-gray-700/50 hover:border-gray-600 hover:text-white rounded-xl transition-all duration-200"
+              class="px-8 py-3.5 text-base font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-900 dark:hover:text-white rounded-xl transition-all duration-200"
             >
               Sign In →
             </button>
@@ -144,7 +144,7 @@ const stats = [
             class="text-center animate-fade-in-up"
             :class="'stagger-' + (i + 4)"
           >
-            <div class="text-3xl sm:text-4xl font-bold text-white font-mono">{{ stat.value }}</div>
+            <div class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white font-mono">{{ stat.value }}</div>
             <div class="text-sm text-gray-500 mt-1.5">{{ stat.label }}</div>
           </div>
         </div>
@@ -156,8 +156,8 @@ const stats = [
       <div class="absolute inset-0 bg-gradient-to-b from-transparent via-gray-900/30 to-transparent"></div>
       <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative">
         <div class="text-center mb-16">
-          <h2 class="text-3xl sm:text-4xl font-bold text-white">Everything you need to find your edge</h2>
-          <p class="mt-4 text-lg text-gray-400 max-w-2xl mx-auto">
+          <h2 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white">Everything you need to find your edge</h2>
+          <p class="mt-4 text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
             Purpose-built for serious Betfair punters who want to understand their results, not just track them.
           </p>
         </div>
@@ -188,8 +188,8 @@ const stats = [
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
             </div>
-            <h3 class="text-base font-semibold text-white mb-2">{{ feature.title }}</h3>
-            <p class="text-sm text-gray-400 leading-relaxed">{{ feature.desc }}</p>
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white mb-2">{{ feature.title }}</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{{ feature.desc }}</p>
           </div>
         </div>
       </div>
@@ -228,9 +228,9 @@ const stats = [
     </section>
 
     <!-- ═══════════ Footer ═══════════ -->
-    <footer class="border-t border-gray-800/50 py-8">
+    <footer class="border-t border-gray-200 dark:border-gray-800/50 py-8">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div class="flex items-center gap-2.5 text-sm text-gray-500">
+        <div class="flex items-center gap-2.5 text-sm text-gray-400 dark:text-gray-500">
           <div class="w-5 h-5 rounded flex items-center justify-center" style="background: linear-gradient(135deg, #14b8a6, #0ea5e9);">
             <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />

@@ -33,9 +33,9 @@ function clearFilters() {
 </script>
 
 <template>
-  <div class="rounded-lg bg-white/[0.02] border border-white/5 p-4 mb-4">
+  <div class="rounded-lg bg-gray-50 dark:bg-white/[0.02] border border-gray-200 dark:border-white/5 p-4 mb-4">
     <div class="flex items-center justify-between mb-3">
-      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Strategy Filters</h3>
+      <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Strategy Filters</h3>
       <button @click="clearFilters" class="text-xs text-teal-400 hover:text-teal-300 transition-colors">
         Clear Filters
       </button>

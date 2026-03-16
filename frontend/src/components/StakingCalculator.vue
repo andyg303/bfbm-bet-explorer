@@ -20,7 +20,7 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
 
 <template>
   <div class="glass-card p-5">
-    <h2 class="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2 mb-5">
+    <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2 mb-5">
       <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
       Staking Calculator
     </h2>
@@ -40,14 +40,14 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
 
       <button @click="handleRecalculate" class="w-full btn-glow !py-2.5 text-sm">Recalculate</button>
 
-      <div v-if="recalcStats" class="mt-4 pt-4 border-t border-gray-800/60 space-y-2.5">
+      <div v-if="recalcStats" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800/60 space-y-2.5">
         <div class="flex justify-between text-xs">
           <span class="text-gray-500">New P/L:</span>
           <span class="font-bold font-mono" :class="(recalcStats.total_pl || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">£{{ (recalcStats.total_pl || 0).toLocaleString() }}</span>
         </div>
         <div class="flex justify-between text-xs">
           <span class="text-gray-500">New Staked:</span>
-          <span class="font-bold font-mono text-white">£{{ (recalcStats.total_staked || 0).toLocaleString() }}</span>
+          <span class="font-bold font-mono text-gray-900 dark:text-white">£{{ (recalcStats.total_staked || 0).toLocaleString() }}</span>
         </div>
         <div class="flex justify-between text-xs">
           <span class="text-gray-500">New ROI:</span>
@@ -55,7 +55,7 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
         </div>
         <div class="flex justify-between text-xs">
           <span class="text-gray-500">Bets Analyzed:</span>
-          <span class="font-bold font-mono text-white">{{ (recalcStats.num_bets || 0).toLocaleString() }}</span>
+          <span class="font-bold font-mono text-gray-900 dark:text-white">{{ (recalcStats.num_bets || 0).toLocaleString() }}</span>
         </div>
       </div>
     </div>

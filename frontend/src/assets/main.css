@@ -49,6 +49,28 @@
     @apply ring-offset-white;
   }
 
+  /* Light-mode variable overrides */
+  html:not(.dark) {
+    --c-bg: #f8fafc;
+    --c-surface: #ffffff;
+    --c-surface-raised: #f1f5f9;
+    --c-surface-overlay: #e2e8f0;
+    --c-border: #e2e8f0;
+    --c-border-subtle: #f1f5f9;
+    --c-text: #0f172a;
+    --c-text-muted: #475569;
+    --c-text-dim: #94a3b8;
+    --c-accent: #0d9488;
+    --c-accent-glow: rgba(13, 148, 136, 0.1);
+    --c-accent-bright: #14b8a6;
+    --c-profit: #059669;
+    --c-profit-bg: rgba(5, 150, 105, 0.06);
+    --c-loss: #e11d48;
+    --c-loss-bg: rgba(225, 29, 72, 0.06);
+    --c-gold: #d97706;
+    --c-gold-bg: rgba(217, 119, 6, 0.06);
+  }
+
   /* Scrollbar styling */
   ::-webkit-scrollbar {
     width: 6px;
@@ -102,7 +124,12 @@
 
   /* Stat card with subtle glow on hover */
   .stat-card {
-    @apply relative bg-gray-900/60 border border-gray-800/50 rounded-xl p-5 overflow-hidden transition-all duration-300;
+    @apply relative border rounded-xl p-5 overflow-hidden transition-all duration-300;
+    @apply bg-white border-gray-200;
+  }
+
+  .dark .stat-card {
+    @apply bg-gray-900/60 border-gray-800/50;
   }
 
   .stat-card::before {
@@ -116,18 +143,13 @@
   }
 
   .stat-card:hover {
-    @apply border-teal-800/40;
-    box-shadow: 0 0 20px -5px rgba(20, 184, 166, 0.1);
-  }
-
-  html:not(.dark) .stat-card {
-    @apply bg-white border-gray-200;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  }
-
-  html:not(.dark) .stat-card:hover {
     @apply border-teal-300;
     box-shadow: 0 4px 16px -4px rgba(20, 184, 166, 0.12);
+  }
+
+  .dark .stat-card:hover {
+    @apply border-teal-800/40;
+    box-shadow: 0 0 20px -5px rgba(20, 184, 166, 0.1);
   }
 
   /* Accent stripe */
@@ -176,17 +198,29 @@
   }
 
   .data-table thead th {
-    @apply px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/80 border-b border-gray-200 dark:border-gray-800/80 cursor-pointer select-none whitespace-nowrap;
+    @apply px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 border-b border-gray-200 cursor-pointer select-none whitespace-nowrap;
     letter-spacing: 0.08em;
   }
 
+  .dark .data-table thead th {
+    @apply text-gray-500 bg-gray-900/80 border-gray-800/80;
+  }
+
   .data-table thead th:hover {
-    @apply bg-gray-100 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300;
+    @apply bg-gray-100 text-gray-700;
+  }
+
+  .dark .data-table thead th:hover {
+    @apply bg-gray-800/60 text-gray-300;
   }
 
   .data-table tbody td {
-    @apply px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800/40;
+    @apply px-4 py-3 whitespace-nowrap text-sm text-gray-600 border-b border-gray-100;
     font-feature-settings: 'tnum';
+  }
+
+  .dark .data-table tbody td {
+    @apply text-gray-400 border-gray-800/40;
   }
 
   .data-table tbody tr {
@@ -194,16 +228,28 @@
   }
 
   .data-table tbody tr:hover {
-    @apply bg-gray-50/50 dark:bg-gray-800/30;
+    @apply bg-gray-50;
+  }
+
+  .dark .data-table tbody tr:hover {
+    @apply bg-gray-800/30;
   }
 
   /* Input field */
   .input-field {
-    @apply w-full px-3 py-2.5 text-sm rounded-xl border bg-gray-50 dark:bg-gray-900/50 border-gray-300 dark:border-gray-700/80 text-gray-900 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 transition-all duration-200;
+    @apply w-full px-3 py-2.5 text-sm rounded-xl border bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400 transition-all duration-200;
+  }
+
+  .dark .input-field {
+    @apply bg-gray-900/50 border-gray-700/80 text-gray-200 placeholder-gray-600;
   }
 
   .input-field:focus {
-    @apply ring-2 ring-teal-500/30 border-teal-500/50 dark:border-teal-500/30 bg-white dark:bg-gray-900;
+    @apply ring-2 ring-teal-500/30 border-teal-500/50 bg-white;
+  }
+
+  .dark .input-field:focus {
+    @apply border-teal-500/30 bg-gray-900;
   }
 
   /* Badges */
@@ -221,19 +267,35 @@
 
   /* Pill nav */
   .pill-nav {
-    @apply flex items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80;
+    @apply flex items-center gap-1 p-1 rounded-xl bg-gray-100;
   }
 
-  .pill-nav-item {
-    @apply px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 text-gray-500 dark:text-gray-400;
+  .dark .pill-nav {
+    @apply bg-gray-800/80;
   }
 
-  .pill-nav-item.active {
-    @apply bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm;
+  .pill-nav button, .pill-nav-item {
+    @apply px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 text-gray-500;
   }
 
-  .pill-nav-item:not(.active):hover {
-    @apply text-gray-700 dark:text-gray-200;
+  .dark .pill-nav button, .dark .pill-nav-item {
+    @apply text-gray-400;
+  }
+
+  .pill-nav button.active, .pill-nav-item.active {
+    @apply bg-white text-gray-900 shadow-sm;
+  }
+
+  .dark .pill-nav button.active, .dark .pill-nav-item.active {
+    @apply bg-gray-700 text-white;
+  }
+
+  .pill-nav button:not(.active):hover, .pill-nav-item:not(.active):hover {
+    @apply text-gray-700;
+  }
+
+  .dark .pill-nav button:not(.active):hover, .dark .pill-nav-item:not(.active):hover {
+    @apply text-gray-200;
   }
 }
 

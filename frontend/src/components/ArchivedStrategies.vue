@@ -55,7 +55,7 @@ function formatDate(dateStr: string | null) {
     <!-- Header + controls -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
       <div>
-        <h2 class="text-lg font-bold text-white tracking-tight">Archived Strategies</h2>
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Archived Strategies</h2>
         <p class="mt-1 text-sm text-gray-500">
           Archived strategies are hidden from the main dashboard. Restore them at any time.
         </p>
@@ -98,7 +98,7 @@ function formatDate(dateStr: string | null) {
                   type="checkbox"
                   :checked="selectedStrategies.size === filteredStrategies.length && filteredStrategies.length > 0"
                   @change="toggleAll"
-                  class="rounded border-gray-600 bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
+                  class="rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
                 />
               </th>
               <th>Strategy</th>
@@ -121,10 +121,10 @@ function formatDate(dateStr: string | null) {
                   type="checkbox"
                   :checked="selectedStrategies.has(stat.strategy)"
                   @change="toggleStrategy(stat.strategy)"
-                  class="rounded border-gray-600 bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
+                  class="rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
                 />
               </td>
-              <td class="font-medium text-white">{{ stat.strategy }}</td>
+              <td class="font-medium text-gray-900 dark:text-white">{{ stat.strategy }}</td>
               <td class="font-mono text-gray-400">{{ stat.num_bets.toLocaleString() }}</td>
               <td class="font-mono font-medium" :class="stat.total_pl >= 0 ? 'text-emerald-400' : 'text-rose-400'">
                 £{{ stat.total_pl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}

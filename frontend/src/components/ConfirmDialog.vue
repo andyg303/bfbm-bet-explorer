@@ -132,10 +132,10 @@ const variantClasses = computed(() => {
 
                 <!-- Content -->
                 <div class="flex-1">
-                  <h3 class="text-base font-semibold text-white">
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ title }}
                   </h3>
-                  <p class="mt-2 text-sm text-gray-400">
+                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
                     {{ message }}
                   </p>
                 </div>
@@ -145,7 +145,7 @@ const variantClasses = computed(() => {
               <div class="mt-6 flex justify-end gap-3">
                 <button
                   @click="emit('cancel')"
-                  class="rounded-lg px-4 py-2 text-sm font-medium text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 focus:outline-none transition-all"
+                  class="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 focus:outline-none transition-all"
                 >
                   {{ cancelLabel }}
                 </button>
