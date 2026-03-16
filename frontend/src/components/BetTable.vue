@@ -193,172 +193,114 @@ async function handleDelete(bet: any) {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
-    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-      <div class="flex justify-between items-center">
-        <div class="flex items-center gap-6">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Bets</h2>
+  <div class="glass-card overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-800/60">
+      <div class="flex flex-wrap justify-between items-center gap-3">
+        <div class="flex items-center gap-4">
+          <h2 class="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+            <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+            Bets
+          </h2>
           <div class="flex items-center gap-2">
-            <label class="text-sm text-gray-700 dark:text-gray-300">Show:</label>
-            <select v-model.number="pageSize" @change="changePageSize(pageSize)" class="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            <label class="text-xs text-gray-500">Show:</label>
+            <select v-model.number="pageSize" @change="changePageSize(pageSize)" class="input-field !w-auto !py-1 !px-2 text-xs">
               <option v-for="size in pageSizeOptions" :key="size" :value="size">{{ size }}</option>
             </select>
-            <span class="text-sm text-gray-700 dark:text-gray-300">per page</span>
           </div>
         </div>
-        
-        <div class="flex items-center gap-4">
-          <button @click="copyToClipboard" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md">
-            Copy All to Clipboard
-          </button>
-          <button @click="exportToCSV" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md">
-            Export All to CSV
-          </button>
-          <div class="text-sm text-gray-500 dark:text-gray-400">{{ totalBets.toLocaleString() }} total bets</div>
-          <button @click="prevPage" :disabled="currentPage === 0" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">
-            Previous
-          </button>
-          <span class="text-sm text-gray-700 dark:text-gray-300">
-            Page {{ currentPage + 1 }} of {{ totalPages }}
-          </span>
-          <button @click="nextPage" :disabled="currentPage >= totalPages - 1" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">
-            Next
-          </button>
+
+        <div class="flex items-center gap-3">
+          <button @click="copyToClipboard" class="px-3 py-1.5 text-xs font-medium text-teal-400 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 rounded-lg transition-colors">Copy All</button>
+          <button @click="exportToCSV" class="px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-lg transition-colors">Export CSV</button>
+          <span class="text-xs text-gray-500 font-mono">{{ totalBets.toLocaleString() }} bets</span>
+          <button @click="prevPage" :disabled="currentPage === 0" class="px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white bg-gray-800/50 border border-gray-700/50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Prev</button>
+          <span class="text-xs text-gray-400 font-mono">{{ currentPage + 1 }}/{{ totalPages }}</span>
+          <button @click="nextPage" :disabled="currentPage >= totalPages - 1" class="px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white bg-gray-800/50 border border-gray-700/50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
         </div>
       </div>
     </div>
-    
+
     <div class="overflow-x-auto">
-      <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-        <thead class="bg-gray-50 dark:bg-gray-900">
+      <table class="data-table">
+        <thead>
           <tr>
-            <th @click="sort('settled_date')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Date <span v-if="sortKey === 'settled_date'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('strategy')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Strategy <span v-if="sortKey === 'strategy'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('event')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Event <span v-if="sortKey === 'event'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('selection')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Selection <span v-if="sortKey === 'selection'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('bet_type')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Type <span v-if="sortKey === 'bet_type'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('matched_amount')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Stake <span v-if="sortKey === 'matched_amount'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('avg_price_matched')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Odds <span v-if="sortKey === 'avg_price_matched'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('bsp')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              BSP <span v-if="sortKey === 'bsp'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('bsp_diff_absolute')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              BSP Diff <span v-if="sortKey === 'bsp_diff_absolute'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('bsp_diff_percentage')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              BSP % <span v-if="sortKey === 'bsp_diff_percentage'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('bsp_diff_probability')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              BSP Prob <span v-if="sortKey === 'bsp_diff_probability'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('lay_liability')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Liability <span v-if="sortKey === 'lay_liability'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('profit_loss')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              P/L <span v-if="sortKey === 'profit_loss'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('market_type')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Market <span v-if="sortKey === 'market_type'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th @click="sort('competition')" class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap">
-              Competition <span v-if="sortKey === 'competition'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
-            </th>
-            <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
-              Delete
-            </th>
+            <th @click="sort('settled_date')" class="cursor-pointer hover:text-teal-400 transition-colors">Date <span v-if="sortKey === 'settled_date'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('strategy')" class="cursor-pointer hover:text-teal-400 transition-colors">Strategy <span v-if="sortKey === 'strategy'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('event')" class="cursor-pointer hover:text-teal-400 transition-colors">Event <span v-if="sortKey === 'event'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('selection')" class="cursor-pointer hover:text-teal-400 transition-colors">Selection <span v-if="sortKey === 'selection'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('bet_type')" class="cursor-pointer hover:text-teal-400 transition-colors">Type <span v-if="sortKey === 'bet_type'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('matched_amount')" class="cursor-pointer hover:text-teal-400 transition-colors">Stake <span v-if="sortKey === 'matched_amount'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('avg_price_matched')" class="cursor-pointer hover:text-teal-400 transition-colors">Odds <span v-if="sortKey === 'avg_price_matched'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('bsp')" class="cursor-pointer hover:text-teal-400 transition-colors">BSP <span v-if="sortKey === 'bsp'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('bsp_diff_absolute')" class="cursor-pointer hover:text-teal-400 transition-colors">BSP Diff <span v-if="sortKey === 'bsp_diff_absolute'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('bsp_diff_percentage')" class="cursor-pointer hover:text-teal-400 transition-colors">BSP % <span v-if="sortKey === 'bsp_diff_percentage'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('bsp_diff_probability')" class="cursor-pointer hover:text-teal-400 transition-colors">BSP Prob <span v-if="sortKey === 'bsp_diff_probability'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('lay_liability')" class="cursor-pointer hover:text-teal-400 transition-colors">Liability <span v-if="sortKey === 'lay_liability'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('profit_loss')" class="cursor-pointer hover:text-teal-400 transition-colors">P/L <span v-if="sortKey === 'profit_loss'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('market_type')" class="cursor-pointer hover:text-teal-400 transition-colors">Market <span v-if="sortKey === 'market_type'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('competition')" class="cursor-pointer hover:text-teal-400 transition-colors">Competition <span v-if="sortKey === 'competition'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th class="text-center">Del</th>
           </tr>
         </thead>
-        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-          <tr v-for="bet in bets" :key="bet.id" class="hover:bg-gray-50 dark:hover:bg-gray-700">
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ formatDate(bet.settled_date) }}</td>
-            <td class="px-4 py-3 text-sm text-gray-900 dark:text-white max-w-xs truncate">{{ bet.strategy }}</td>
-            <td class="px-4 py-3 text-sm text-gray-900 dark:text-white max-w-xs truncate">{{ bet.event }}</td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{ bet.selection }}</td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm">
-              <span class="px-2 py-1 text-xs font-medium rounded-full" :class="bet.bet_type === 'BACK' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' : 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200'">
-                {{ bet.bet_type }}
-              </span>
+        <tbody>
+          <tr v-for="bet in bets" :key="bet.id">
+            <td class="whitespace-nowrap text-gray-500 font-mono text-xs">{{ formatDate(bet.settled_date) }}</td>
+            <td class="text-gray-300 max-w-[140px] truncate">{{ bet.strategy }}</td>
+            <td class="text-gray-300 max-w-[140px] truncate">{{ bet.event }}</td>
+            <td class="whitespace-nowrap text-gray-300">{{ bet.selection }}</td>
+            <td class="whitespace-nowrap">
+              <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md" :class="bet.bet_type === 'BACK' ? 'bg-sky-500/15 text-sky-400 border border-sky-500/20' : 'bg-rose-500/15 text-rose-400 border border-rose-500/20'">{{ bet.bet_type }}</span>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+            <td class="whitespace-nowrap font-mono">
               <div v-if="isCustomStaking && bet.recalculated_stake">
-                <div class="font-semibold text-blue-600 dark:text-blue-400">£{{ bet.recalculated_stake.toFixed(2) }}</div>
-                <div class="text-xs text-gray-400 dark:text-gray-500 line-through">£{{ bet.matched_amount?.toFixed(2) }}</div>
+                <div class="font-semibold text-sky-400">£{{ bet.recalculated_stake.toFixed(2) }}</div>
+                <div class="text-[10px] text-gray-600 line-through">£{{ bet.matched_amount?.toFixed(2) }}</div>
               </div>
-              <div v-else>£{{ bet.matched_amount?.toFixed(2) }}</div>
+              <div v-else class="text-gray-400">£{{ bet.matched_amount?.toFixed(2) }}</div>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ bet.avg_price_matched?.toFixed(2) }}</td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ bet.bsp?.toFixed(2) || '-' }}</td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm" :class="(bet.bsp_diff_absolute || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+            <td class="whitespace-nowrap font-mono text-gray-400">{{ bet.avg_price_matched?.toFixed(2) }}</td>
+            <td class="whitespace-nowrap font-mono text-gray-400">{{ bet.bsp?.toFixed(2) || '-' }}</td>
+            <td class="whitespace-nowrap font-mono" :class="(bet.bsp_diff_absolute || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
               {{ bet.bsp_diff_absolute ? ((bet.bsp_diff_absolute > 0 ? '+' : '') + bet.bsp_diff_absolute.toFixed(3)) : '-' }}
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm" :class="(bet.bsp_diff_percentage || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+            <td class="whitespace-nowrap font-mono" :class="(bet.bsp_diff_percentage || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
               {{ bet.bsp_diff_percentage ? ((bet.bsp_diff_percentage > 0 ? '+' : '') + bet.bsp_diff_percentage.toFixed(2) + '%') : '-' }}
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm" :class="(bet.bsp_diff_probability || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+            <td class="whitespace-nowrap font-mono" :class="(bet.bsp_diff_probability || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
               {{ bet.bsp_diff_probability ? ((bet.bsp_diff_probability > 0 ? '+' : '') + bet.bsp_diff_probability.toFixed(2) + '%') : '-' }}
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+            <td class="whitespace-nowrap font-mono">
               <div v-if="isCustomStaking && bet.recalculated_liability !== undefined">
-                <div class="font-semibold text-blue-600 dark:text-blue-400">£{{ bet.recalculated_liability.toFixed(2) }}</div>
-                <div class="text-xs text-gray-400 dark:text-gray-500 line-through">{{ bet.lay_liability ? '£' + bet.lay_liability.toFixed(2) : '-' }}</div>
+                <div class="font-semibold text-sky-400">£{{ bet.recalculated_liability.toFixed(2) }}</div>
+                <div class="text-[10px] text-gray-600 line-through">{{ bet.lay_liability ? '£' + bet.lay_liability.toFixed(2) : '-' }}</div>
               </div>
-              <div v-else>{{ bet.lay_liability ? '£' + bet.lay_liability.toFixed(2) : '-' }}</div>
+              <div v-else class="text-gray-400">{{ bet.lay_liability ? '£' + bet.lay_liability.toFixed(2) : '-' }}</div>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm font-medium">
+            <td class="whitespace-nowrap font-mono font-semibold">
               <div v-if="isCustomStaking && bet.recalculated_pl !== undefined">
-                <div class="font-semibold" :class="bet.recalculated_pl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                  £{{ bet.recalculated_pl.toFixed(2) }}
-                </div>
-                <div class="text-xs text-gray-400 dark:text-gray-500 line-through">£{{ bet.profit_loss?.toFixed(2) }}</div>
+                <div :class="bet.recalculated_pl >= 0 ? 'text-emerald-400' : 'text-rose-400'">£{{ bet.recalculated_pl.toFixed(2) }}</div>
+                <div class="text-[10px] text-gray-600 line-through font-normal">£{{ bet.profit_loss?.toFixed(2) }}</div>
               </div>
-              <div v-else :class="(bet.profit_loss || 0) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                £{{ bet.profit_loss?.toFixed(2) }}
-              </div>
+              <div v-else :class="(bet.profit_loss || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">£{{ bet.profit_loss?.toFixed(2) }}</div>
             </td>
-            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{{ bet.market_type }}</td>
-            <td class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate">{{ bet.competition }}</td>
-            <td class="px-4 py-3 text-center">
-              <button
-                @click="handleDelete(bet)"
-                :disabled="deletingId === bet.id"
-                title="Soft-delete this bet"
-                class="p-1 rounded text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                <svg v-if="deletingId !== bet.id" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                </svg>
+            <td class="whitespace-nowrap text-gray-500">{{ bet.market_type }}</td>
+            <td class="text-gray-500 max-w-[120px] truncate">{{ bet.competition }}</td>
+            <td class="text-center">
+              <button @click="handleDelete(bet)" :disabled="deletingId === bet.id" title="Soft-delete this bet" class="p-1 rounded text-gray-600 hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                <svg v-if="deletingId !== bet.id" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
               </button>
             </td>
           </tr>
           <tr v-if="!bets || bets.length === 0">
-            <td colspan="16" class="px-6 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No bets found</td>
+            <td colspan="16" class="px-6 py-8 text-center text-sm text-gray-600">No bets found</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-center items-center">
-      <span class="text-sm text-gray-500 dark:text-gray-400">
-        Showing {{ bets.length }} of {{ totalBets.toLocaleString() }} bets
-      </span>
+    <div class="px-5 py-3 border-t border-gray-800/60 text-center">
+      <span class="text-xs text-gray-600 font-mono">Showing {{ bets.length }} of {{ totalBets.toLocaleString() }} bets</span>
     </div>
   </div>
 </template>

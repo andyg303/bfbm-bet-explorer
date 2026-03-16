@@ -34,74 +34,77 @@ function clearFilters() {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-    <div class="flex justify-between items-center mb-4">
-      <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Filters</h2>
-      <button @click="clearFilters" class="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">Clear All</button>
+  <div class="glass-card p-5">
+    <div class="flex justify-between items-center mb-5">
+      <h2 class="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2">
+        <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+        Filters
+      </h2>
+      <button @click="clearFilters" class="text-xs text-teal-400 hover:text-teal-300 font-medium transition-colors">Clear All</button>
     </div>
 
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Bet Type</label>
-        <select v-model="betStore.filters.bet_types" multiple class="w-full border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Bet Type</label>
+        <select v-model="betStore.filters.bet_types" multiple class="input-field !py-1.5 text-xs" style="min-height: 60px;">
           <option v-for="type in options.bet_types" :key="type" :value="type">{{ type }}</option>
         </select>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Market Type</label>
-        <select v-model="betStore.filters.market_types" multiple class="w-full border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Market Type</label>
+        <select v-model="betStore.filters.market_types" multiple class="input-field !py-1.5 text-xs" style="min-height: 60px;">
           <option v-for="market in options.market_types" :key="market" :value="market">{{ market }}</option>
         </select>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Event Type</label>
-        <select v-model="betStore.filters.events" multiple class="w-full border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Event Type</label>
+        <select v-model="betStore.filters.events" multiple class="input-field !py-1.5 text-xs" style="min-height: 60px;">
           <option v-for="event in options.events" :key="event" :value="event">{{ event }}</option>
         </select>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Odds Range</label>
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Odds Range</label>
         <div class="grid grid-cols-2 gap-2">
-          <input v-model.number="betStore.filters.min_odds" type="number" step="0.1" placeholder="Min" class="border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500">
-          <input v-model.number="betStore.filters.max_odds" type="number" step="0.1" placeholder="Max" class="border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500">
+          <input v-model.number="betStore.filters.min_odds" type="number" step="0.1" placeholder="Min" class="input-field text-xs">
+          <input v-model.number="betStore.filters.max_odds" type="number" step="0.1" placeholder="Max" class="input-field text-xs">
         </div>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Stake Range (£)</label>
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Stake Range (£)</label>
         <div class="grid grid-cols-2 gap-2">
-          <input v-model.number="betStore.filters.min_stake" type="number" step="0.01" placeholder="Min" class="border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500">
-          <input v-model.number="betStore.filters.max_stake" type="number" step="0.01" placeholder="Max" class="border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500">
+          <input v-model.number="betStore.filters.min_stake" type="number" step="0.01" placeholder="Min" class="input-field text-xs">
+          <input v-model.number="betStore.filters.max_stake" type="number" step="0.01" placeholder="Max" class="input-field text-xs">
         </div>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">P/L Range (£)</label>
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">P/L Range (£)</label>
         <div class="grid grid-cols-2 gap-2">
-          <input v-model.number="betStore.filters.min_pl" type="number" step="0.01" placeholder="Min" class="border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500">
-          <input v-model.number="betStore.filters.max_pl" type="number" step="0.01" placeholder="Max" class="border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500">
+          <input v-model.number="betStore.filters.min_pl" type="number" step="0.01" placeholder="Min" class="input-field text-xs">
+          <input v-model.number="betStore.filters.max_pl" type="number" step="0.01" placeholder="Max" class="input-field text-xs">
         </div>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Date Range</label>
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Date Range</label>
         <div class="space-y-2">
-          <input v-model="betStore.filters.date_from" type="date" class="w-full border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-          <input v-model="betStore.filters.date_to" type="date" class="w-full border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+          <input v-model="betStore.filters.date_from" type="date" class="input-field text-xs">
+          <input v-model="betStore.filters.date_to" type="date" class="input-field text-xs">
         </div>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Selection Search</label>
-        <input v-model="betStore.filters.selection_search" type="text" placeholder="Search selection..." class="w-full border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500">
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Selection Search</label>
+        <input v-model="betStore.filters.selection_search" type="text" placeholder="Search selection..." class="input-field text-xs">
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description Search</label>
-        <input v-model="betStore.filters.description_search" type="text" placeholder="Search description..." class="w-full border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500">
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Description Search</label>
+        <input v-model="betStore.filters.description_search" type="text" placeholder="Search description..." class="input-field text-xs">
       </div>
     </div>
   </div>

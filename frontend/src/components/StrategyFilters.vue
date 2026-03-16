@@ -33,10 +33,10 @@ function clearFilters() {
 </script>
 
 <template>
-  <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 mb-4">
+  <div class="rounded-lg bg-white/[0.02] border border-white/5 p-4 mb-4">
     <div class="flex items-center justify-between mb-3">
-      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Strategy Filters</h3>
-      <button @click="clearFilters" class="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
+      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Strategy Filters</h3>
+      <button @click="clearFilters" class="text-xs text-teal-400 hover:text-teal-300 transition-colors">
         Clear Filters
       </button>
     </div>
@@ -44,120 +44,120 @@ function clearFilters() {
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
       <!-- Name Search -->
       <div class="col-span-2">
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Strategy Name</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Strategy Name</label>
         <input 
           v-model="localFilters.nameSearch" 
           type="text" 
           placeholder="Search..."
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs"
         >
       </div>
 
       <!-- Bets Range -->
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Min Bets</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Min Bets</label>
         <input 
           v-model.number="localFilters.minBets" 
           type="number" 
           placeholder="Min"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Max Bets</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Max Bets</label>
         <input 
           v-model.number="localFilters.maxBets" 
           type="number" 
           placeholder="Max"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
 
       <!-- P/L Range -->
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Min P/L (£)</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Min P/L (£)</label>
         <input 
           v-model.number="localFilters.minPL" 
           type="number" 
           step="0.01"
           placeholder="Min"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Max P/L (£)</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Max P/L (£)</label>
         <input 
           v-model.number="localFilters.maxPL" 
           type="number" 
           step="0.01"
           placeholder="Max"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
 
       <!-- ROI Range -->
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Min ROI %</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Min ROI %</label>
         <input 
           v-model.number="localFilters.minROI" 
           type="number" 
           step="0.1"
           placeholder="Min"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Max ROI %</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Max ROI %</label>
         <input 
           v-model.number="localFilters.maxROI" 
           type="number" 
           step="0.1"
           placeholder="Max"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
 
       <!-- Win Rate Range -->
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Min Win %</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Min Win %</label>
         <input 
           v-model.number="localFilters.minWinRate" 
           type="number" 
           step="0.1"
           placeholder="Min"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Max Win %</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Max Win %</label>
         <input 
           v-model.number="localFilters.maxWinRate" 
           type="number" 
           step="0.1"
           placeholder="Max"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
 
       <!-- BSP Fill % Range -->
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Min BSP Fill %</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Min BSP Fill %</label>
         <input 
           v-model.number="localFilters.minBspFill" 
           type="number" 
           step="0.1"
           placeholder="Min"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
       <div>
-        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Max BSP Fill %</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Max BSP Fill %</label>
         <input 
           v-model.number="localFilters.maxBspFill" 
           type="number" 
           step="0.1"
           placeholder="Max"
-          class="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+          class="input-field !py-1 !text-xs font-mono"
         >
       </div>
     </div>

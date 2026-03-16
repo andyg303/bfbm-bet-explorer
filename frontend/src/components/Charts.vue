@@ -41,8 +41,8 @@ const chartData = computed(() => {
 
   // Determine line colour based on final cumulative P/L (green if profitable, red if not)
   const lastCumPL = plData.value[plData.value.length - 1]?.cumulative_pl ?? 0
-  const lineColor = lastCumPL >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
-  const fillColor = lastCumPL >= 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'
+  const lineColor = lastCumPL >= 0 ? 'rgb(16, 185, 129)' : 'rgb(244, 63, 94)'
+  const fillColor = lastCumPL >= 0 ? 'rgba(16, 185, 129, 0.08)' : 'rgba(244, 63, 94, 0.08)'
 
   return {
     labels: plData.value.map(d => d.date),
@@ -68,7 +68,8 @@ const chartOptions = computed(() => ({
     legend: {
       position: 'top' as const,
       labels: {
-        color: isDark.value ? '#e5e7eb' : '#374151'
+        color: isDark.value ? '#9ca3af' : '#374151',
+        font: { family: 'JetBrains Mono, monospace', size: 11 }
       }
     },
     title: {
@@ -77,27 +78,34 @@ const chartOptions = computed(() => ({
     tooltip: {
       mode: 'index' as const,
       intersect: false,
+      backgroundColor: '#111827',
+      borderColor: '#1f2937',
+      borderWidth: 1,
+      titleFont: { family: 'DM Sans, sans-serif' },
+      bodyFont: { family: 'JetBrains Mono, monospace', size: 11 }
     }
   },
   scales: {
     x: {
       ticks: {
-        color: isDark.value ? '#9ca3af' : '#6b7280'
+        color: isDark.value ? '#4b5563' : '#6b7280',
+        font: { family: 'JetBrains Mono, monospace', size: 10 }
       },
       grid: {
-        color: isDark.value ? '#4b5563' : '#e5e7eb'
+        color: isDark.value ? '#1f2937' : '#e5e7eb'
       }
     },
     y: {
       beginAtZero: true,
       ticks: {
-        color: isDark.value ? '#9ca3af' : '#6b7280',
+        color: isDark.value ? '#4b5563' : '#6b7280',
+        font: { family: 'JetBrains Mono, monospace', size: 10 },
         callback: function(value: any) {
           return '£' + value.toLocaleString()
         }
       },
       grid: {
-        color: isDark.value ? '#4b5563' : '#e5e7eb'
+        color: isDark.value ? '#1f2937' : '#e5e7eb'
       }
     }
   }
@@ -105,14 +113,17 @@ const chartOptions = computed(() => ({
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Profit/Loss Over Time</h2>
+  <div class="glass-card p-5">
+    <h2 class="text-sm font-semibold text-white uppercase tracking-wider flex items-center gap-2 mb-4">
+      <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>
+      Profit/Loss Over Time
+    </h2>
     
     <div v-if="plData && plData.length > 0" class="h-96">
       <Line :data="chartData" :options="chartOptions" />
     </div>
     
-    <div v-else class="h-96 flex items-center justify-center text-gray-500 dark:text-gray-400">
+    <div v-else class="h-96 flex items-center justify-center text-gray-600">
       No data available for chart
     </div>
   </div>

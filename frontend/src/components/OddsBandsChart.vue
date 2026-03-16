@@ -24,8 +24,8 @@ const chartData = computed(() => {
       {
         label: 'Profit/Loss (£)',
         data: data.map(d => d.total_pl),
-        backgroundColor: data.map(d => d.total_pl >= 0 ? 'rgba(34, 197, 94, 0.8)' : 'rgba(239, 68, 68, 0.8)'),
-        borderColor: data.map(d => d.total_pl >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'),
+        backgroundColor: data.map(d => d.total_pl >= 0 ? 'rgba(16, 185, 129, 0.7)' : 'rgba(244, 63, 94, 0.7)'),
+        borderColor: data.map(d => d.total_pl >= 0 ? 'rgb(16, 185, 129)' : 'rgb(244, 63, 94)'),
         borderWidth: 1,
         yAxisID: 'y'
       },
@@ -33,8 +33,8 @@ const chartData = computed(() => {
         label: 'Number of Bets',
         data: data.map(d => d.num_bets),
         type: 'line' as const,
-        borderColor: isDark.value ? 'rgb(147, 197, 253)' : 'rgb(59, 130, 246)',
-        backgroundColor: isDark.value ? 'rgba(147, 197, 253, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+        borderColor: isDark.value ? 'rgb(20, 184, 166)' : 'rgb(59, 130, 246)',
+        backgroundColor: isDark.value ? 'rgba(20, 184, 166, 0.1)' : 'rgba(59, 130, 246, 0.1)',
         borderWidth: 2,
         pointRadius: 4,
         pointHoverRadius: 6,
@@ -52,8 +52,8 @@ function createChart() {
     chartInstance.destroy()
   }
 
-  const textColor = isDark.value ? '#e5e7eb' : '#374151'
-  const gridColor = isDark.value ? '#4b5563' : '#e5e7eb'
+  const textColor = isDark.value ? '#6b7280' : '#374151'
+  const gridColor = isDark.value ? '#1f2937' : '#e5e7eb'
 
   chartInstance = new Chart(chartCanvas.value, {
     type: 'bar',
@@ -81,15 +81,22 @@ function createChart() {
           text: 'Profit/Loss & Bet Volume by Odds Bands',
           color: textColor,
           font: {
-            size: 16,
-            weight: 'bold'
+            size: 14,
+            weight: 'bold',
+            family: 'DM Sans, sans-serif'
           }
         },
         tooltip: {
+          backgroundColor: '#111827',
+          borderColor: '#1f2937',
+          borderWidth: 1,
+          titleFont: { family: 'DM Sans, sans-serif' },
+          bodyFont: { family: 'JetBrains Mono, monospace', size: 11 },
           callbacks: {
             label: function(context) {
               const label = context.dataset.label || ''
               const value = context.parsed.y
+              if (value === null || value === undefined) return label
               if (context.datasetIndex === 0) {
                 return `${label}: £${value.toFixed(2)}`
               } else {
@@ -99,6 +106,7 @@ function createChart() {
             afterLabel: function(context) {
               const index = context.dataIndex
               const data = oddsBandsData.value[index]
+              if (!data) return ''
               return `ROI: ${data.roi.toFixed(2)}%\nStaked: £${data.total_staked.toFixed(2)}`
             }
           }
@@ -173,11 +181,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+  <div class="glass-card p-5">
     <div v-if="oddsBandsData.length > 0" style="height: 400px;">
       <canvas ref="chartCanvas"></canvas>
     </div>
-    <div v-else class="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">
+    <div v-else class="flex items-center justify-center h-64 text-gray-600">
       No data available
     </div>
   </div>

@@ -22,9 +22,9 @@ watch(
 )
 
 const typeClasses = {
-  success: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 ring-emerald-200 dark:ring-emerald-800',
-  error: 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-200 ring-red-200 dark:ring-red-800',
-  info: 'bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 ring-blue-200 dark:ring-blue-800',
+  success: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+  error: 'bg-rose-500/10 text-rose-400 border border-rose-500/20',
+  info: 'bg-teal-500/10 text-teal-400 border border-teal-500/20',
 }
 </script>
 
@@ -43,7 +43,7 @@ const typeClasses = {
         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] max-w-md w-full px-4"
       >
         <div
-          class="flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg ring-1 text-sm font-medium"
+          class="flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl shadow-black/40 backdrop-blur-xl text-sm font-medium"
           :class="typeClasses[type || 'info']"
         >
           <!-- Icon -->

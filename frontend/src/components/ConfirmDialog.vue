@@ -30,21 +30,21 @@ const variantClasses = computed(() => {
   switch (props.variant) {
     case 'danger':
       return {
-        iconBg: 'bg-red-100 dark:bg-red-900/30',
-        iconColor: 'text-red-600 dark:text-red-400',
-        button: 'bg-red-600 hover:bg-red-700 focus:ring-red-500',
+        iconBg: 'bg-rose-500/10',
+        iconColor: 'text-rose-400',
+        button: 'bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:bg-rose-500/30',
       }
     case 'info':
       return {
-        iconBg: 'bg-blue-100 dark:bg-blue-900/30',
-        iconColor: 'text-blue-600 dark:text-blue-400',
-        button: 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500',
+        iconBg: 'bg-teal-500/10',
+        iconColor: 'text-teal-400',
+        button: 'bg-teal-500/20 border border-teal-500/30 text-teal-400 hover:bg-teal-500/30',
       }
     default:
       return {
-        iconBg: 'bg-amber-100 dark:bg-amber-900/30',
-        iconColor: 'text-amber-600 dark:text-amber-400',
-        button: 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500',
+        iconBg: 'bg-amber-500/10',
+        iconColor: 'text-amber-400',
+        button: 'bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30',
       }
   }
 })
@@ -76,7 +76,7 @@ const variantClasses = computed(() => {
           >
             <div
               v-if="open"
-              class="relative w-full max-w-md transform rounded-2xl bg-white dark:bg-gray-800 p-6 shadow-2xl ring-1 ring-black/5 dark:ring-white/10"
+              class="relative w-full max-w-md transform glass-card !p-6 shadow-2xl shadow-black/40"
             >
               <div class="flex items-start gap-4">
                 <!-- Icon -->
@@ -132,10 +132,10 @@ const variantClasses = computed(() => {
 
                 <!-- Content -->
                 <div class="flex-1">
-                  <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                  <h3 class="text-base font-semibold text-white">
                     {{ title }}
                   </h3>
-                  <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                  <p class="mt-2 text-sm text-gray-400">
                     {{ message }}
                   </p>
                 </div>
@@ -145,13 +145,13 @@ const variantClasses = computed(() => {
               <div class="mt-6 flex justify-end gap-3">
                 <button
                   @click="emit('cancel')"
-                  class="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition-colors"
+                  class="rounded-lg px-4 py-2 text-sm font-medium text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 focus:outline-none transition-all"
                 >
                   {{ cancelLabel }}
                 </button>
                 <button
                   @click="emit('confirm')"
-                  class="rounded-lg px-4 py-2.5 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors"
+                  class="rounded-lg px-4 py-2 text-sm font-medium focus:outline-none transition-all"
                   :class="variantClasses.button"
                 >
                   {{ confirmLabel }}
