@@ -67,11 +67,19 @@ async def lifespan(app):
         if 'user_id' not in columns:
             conn.execute(text("ALTER TABLE bets ADD COLUMN user_id INTEGER REFERENCES users(id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bets_user_id ON bets (user_id)"))
-        # Drop old unique constraint on bet_id alone (now unique per user)
+        # Drop old unique constraint/index on bet_id alone (now unique per user)
         try:
             conn.execute(text("ALTER TABLE bets DROP CONSTRAINT IF EXISTS bets_bet_id_key"))
         except Exception:
             pass
+        try:
+            conn.execute(text("DROP INDEX IF EXISTS ix_bets_bet_id"))
+        except Exception:
+            pass
+        # Recreate bet_id index as non-unique
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_bets_bet_id ON bets (bet_id)"
+        ))
         # Create composite unique index if not exists
         conn.execute(text(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_bet_id ON bets (user_id, bet_id)"
