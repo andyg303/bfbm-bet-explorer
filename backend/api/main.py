@@ -698,7 +698,7 @@ def get_strategy_stats(
         func.sum(case((Bet.bet_type == 'LAY', Bet.lay_liability), else_=Bet.matched_amount)).label('total_staked'),
         func.sum(Bet.matched_amount).label('total_stake_only'),
         func.avg(Bet.avg_price_matched).label('avg_odds'),
-        func.sum(case((Bet.status == 'WON', 1), else_=0)).label('num_won'),
+        func.sum(case((Bet.profit_loss > 0, 1), else_=0)).label('num_won'),
         func.sum(case((Bet.bet_type == 'BACK', 1), else_=0)).label('num_back'),
         func.sum(case((Bet.bet_type == 'LAY', 1), else_=0)).label('num_lay'),
         func.sum(case((Bet.bsp.isnot(None), 1), else_=0)).label('num_with_bsp'),

@@ -253,7 +253,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
   <div v-else-if="showDashboard" class="min-h-screen bg-gray-50 dark:bg-[#0b0f1a] text-gray-800 dark:text-gray-200 transition-colors duration-200">
     <!-- ═══════════ Top Navbar ═══════════ -->
     <nav class="sticky top-0 z-50 bg-white/80 dark:bg-[#0b0f1a]/80 backdrop-blur-2xl border-b border-gray-200 dark:border-gray-800/40">
-      <div class="max-w-[1920px] mx-auto px-4 sm:px-6">
+      <div class="px-4 sm:px-6">
         <div class="flex h-14 items-center justify-between">
           <!-- Left: Menu button + Logo -->
           <div class="flex items-center gap-3">
@@ -352,11 +352,11 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
     </nav>
 
     <!-- ═══════════ Main Content ═══════════ -->
-    <main class="max-w-[1920px] mx-auto">
+    <main>
       <div v-if="activeTab === 'dashboard'" class="px-4 py-6 sm:px-6">
         <SummaryHeader />
-        <div class="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <aside class="lg:col-span-1" :class="{ 'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:static lg:bg-transparent lg:backdrop-blur-none': sidebarOpen }">
+        <div class="mt-6 flex flex-col lg:flex-row gap-6">
+          <aside class="lg:w-72 xl:w-80 lg:flex-shrink-0" :class="{ 'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:static lg:bg-transparent lg:backdrop-blur-none': sidebarOpen }">
             <div v-if="sidebarOpen" class="absolute inset-0 lg:hidden" @click="sidebarOpen = false" />
             <div class="relative h-full lg:h-auto overflow-y-auto bg-gray-50 dark:bg-[#0b0f1a] lg:bg-transparent max-w-sm lg:max-w-none" :class="{ 'p-4 lg:p-0': sidebarOpen }">
               <FilterPanel />
@@ -365,7 +365,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
               </div>
             </div>
           </aside>
-          <div class="lg:col-span-3 space-y-6">
+          <div class="min-w-0 flex-1 space-y-6">
             <StrategyStats />
             <Charts />
             <MonthlyPLTable />
@@ -382,7 +382,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
 
     <!-- ═══════════ Footer ═══════════ -->
     <footer class="mt-12 border-t border-gray-200 dark:border-gray-800/40 bg-white/60 dark:bg-[#0b0f1a]/80">
-      <div class="max-w-[1920px] mx-auto px-4 sm:px-6 py-5">
+      <div class="px-4 sm:px-6 py-5">
         <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div class="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-600">
             <div class="w-5 h-5 rounded flex items-center justify-center" style="background: linear-gradient(135deg, #14b8a6, #0ea5e9);">

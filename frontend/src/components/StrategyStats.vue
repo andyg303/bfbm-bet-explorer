@@ -272,13 +272,13 @@ async function archiveSelected() {
             </td>
             <td class="font-medium text-gray-900 dark:text-white">{{ stat.strategy }}</td>
             <td class="font-mono">{{ stat.num_bets }}</td>
-            <td class="font-mono font-medium" :class="stat.total_pl >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            <td class="font-mono font-medium" :class="stat.total_pl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               £{{ stat.total_pl.toLocaleString() }}
             </td>
-            <td class="font-mono" :class="stat.roi >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            <td class="font-mono" :class="stat.roi >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               {{ stat.roi }}%
             </td>
-            <td class="font-mono" :class="stat.yield_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            <td class="font-mono" :class="stat.yield_pct >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               {{ stat.yield_pct.toFixed(2) }}%
             </td>
             <td class="font-mono text-gray-400">£{{ stat.total_staked.toLocaleString() }}</td>
@@ -286,13 +286,13 @@ async function archiveSelected() {
             <td class="font-mono text-gray-400">{{ stat.win_rate.toFixed(1) }}%</td>
             <td class="font-mono text-gray-400">{{ stat.num_back }}/{{ stat.num_lay }}</td>
             <td class="font-mono text-gray-400">{{ stat.bsp_fill_pct.toFixed(1) }}%</td>
-            <td class="font-mono" :class="stat.avg_bsp_abs >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            <td class="font-mono" :class="stat.avg_bsp_abs >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               {{ stat.avg_bsp_abs > 0 ? '+' : '' }}{{ stat.avg_bsp_abs.toFixed(3) }}
             </td>
-            <td class="font-mono" :class="stat.avg_bsp_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            <td class="font-mono" :class="stat.avg_bsp_pct >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               {{ stat.avg_bsp_pct > 0 ? '+' : '' }}{{ stat.avg_bsp_pct.toFixed(2) }}%
             </td>
-            <td class="font-mono" :class="stat.avg_bsp_prob >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            <td class="font-mono" :class="stat.avg_bsp_prob >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               {{ stat.avg_bsp_prob > 0 ? '+' : '' }}{{ stat.avg_bsp_prob.toFixed(2) }}%
             </td>
           </tr>

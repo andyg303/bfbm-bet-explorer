@@ -215,12 +215,20 @@
   }
 
   .data-table tbody td {
-    @apply px-4 py-3 whitespace-nowrap text-sm text-gray-600 border-b border-gray-100;
+    @apply px-4 py-3 whitespace-nowrap text-sm border-b border-gray-100;
     font-feature-settings: 'tnum';
   }
 
+  :where(.data-table tbody) td {
+    color: theme('colors.gray.600');
+  }
+
   .dark .data-table tbody td {
-    @apply text-gray-400 border-gray-800/40;
+    @apply border-gray-800/40;
+  }
+
+  :where(.dark .data-table tbody) td {
+    color: theme('colors.gray.400');
   }
 
   .data-table tbody tr {

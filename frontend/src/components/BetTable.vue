@@ -260,13 +260,13 @@ async function handleDelete(bet: any) {
             </td>
             <td class="whitespace-nowrap font-mono text-gray-400">{{ bet.avg_price_matched?.toFixed(2) }}</td>
             <td class="whitespace-nowrap font-mono text-gray-400">{{ bet.bsp?.toFixed(2) || '-' }}</td>
-            <td class="whitespace-nowrap font-mono" :class="(bet.bsp_diff_absolute || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            <td class="whitespace-nowrap font-mono" :class="(bet.bsp_diff_absolute || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               {{ bet.bsp_diff_absolute ? ((bet.bsp_diff_absolute > 0 ? '+' : '') + bet.bsp_diff_absolute.toFixed(3)) : '-' }}
             </td>
-            <td class="whitespace-nowrap font-mono" :class="(bet.bsp_diff_percentage || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            <td class="whitespace-nowrap font-mono" :class="(bet.bsp_diff_percentage || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               {{ bet.bsp_diff_percentage ? ((bet.bsp_diff_percentage > 0 ? '+' : '') + bet.bsp_diff_percentage.toFixed(2) + '%') : '-' }}
             </td>
-            <td class="whitespace-nowrap font-mono" :class="(bet.bsp_diff_probability || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            <td class="whitespace-nowrap font-mono" :class="(bet.bsp_diff_probability || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               {{ bet.bsp_diff_probability ? ((bet.bsp_diff_probability > 0 ? '+' : '') + bet.bsp_diff_probability.toFixed(2) + '%') : '-' }}
             </td>
             <td class="whitespace-nowrap font-mono">
@@ -278,10 +278,10 @@ async function handleDelete(bet: any) {
             </td>
             <td class="whitespace-nowrap font-mono font-semibold">
               <div v-if="isCustomStaking && bet.recalculated_pl !== undefined">
-                <div :class="bet.recalculated_pl >= 0 ? 'text-emerald-400' : 'text-rose-400'">£{{ bet.recalculated_pl.toFixed(2) }}</div>
+                <div :class="bet.recalculated_pl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">£{{ bet.recalculated_pl.toFixed(2) }}</div>
                 <div class="text-[10px] text-gray-600 line-through font-normal">£{{ bet.profit_loss?.toFixed(2) }}</div>
               </div>
-              <div v-else :class="(bet.profit_loss || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">£{{ bet.profit_loss?.toFixed(2) }}</div>
+              <div v-else :class="(bet.profit_loss || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">£{{ bet.profit_loss?.toFixed(2) }}</div>
             </td>
             <td class="whitespace-nowrap text-gray-500">{{ bet.market_type }}</td>
             <td class="text-gray-500 max-w-[120px] truncate">{{ bet.competition }}</td>
