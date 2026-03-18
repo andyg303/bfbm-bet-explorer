@@ -270,7 +270,7 @@ async function archiveSelected() {
                 class="rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
               >
             </td>
-            <td class="font-medium text-gray-900 dark:text-white">{{ stat.strategy }}</td>
+            <td class="strategy-cell font-medium text-gray-900 dark:text-white">{{ stat.strategy }}</td>
             <td class="font-mono">{{ stat.num_bets }}</td>
             <td class="font-mono font-medium" :class="stat.total_pl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               £{{ stat.total_pl.toLocaleString() }}

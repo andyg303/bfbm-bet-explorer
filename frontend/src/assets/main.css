@@ -215,8 +215,20 @@
   }
 
   .data-table tbody td {
-    @apply px-4 py-3 whitespace-nowrap text-sm border-b border-gray-100;
+    @apply px-4 py-3 text-sm border-b border-gray-100 whitespace-nowrap;
     font-feature-settings: 'tnum';
+  }
+
+  .data-table th,
+  .data-table td {
+    @apply whitespace-nowrap;
+  }
+
+  /* Allow strategy name column to wrap to reduce table width */
+  .data-table td.strategy-cell {
+    white-space: normal;
+    word-break: break-word;
+    min-width: 10rem;
   }
 
   :where(.data-table tbody) td {
