@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { uploadBetsCSV } from '../services/api'
+import { uploadBetsCSV, type IngestProgressEvent } from '../services/api'
 import { useBetStore } from '../stores/betStore'
 
 const betStore = useBetStore()
@@ -8,8 +8,12 @@ const betStore = useBetStore()
 const panelOpen = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
-const status = ref<'idle' | 'uploading' | 'success' | 'error'>('idle')
-const uploadProgress = ref(0)
+const status = ref<'idle' | 'sending' | 'processing' | 'success' | 'error'>('idle')
+const processedRows = ref(0)
+const totalRows = ref(0)
+const insertedCount = ref(0)
+const updatedCount = ref(0)
+const skippedCount = ref(0)
 const result = ref<{ filename: string; inserted: number; updated: number; skipped: number; total_bets_in_db: number; warnings?: string[] } | null>(null)
 const errorMessage = ref('')
 const showHelp = ref(false)
@@ -28,14 +32,26 @@ function onFileSelected(e: Event) {
 
 async function ingest() {
   if (!selectedFile.value) return
-  status.value = 'uploading'
-  uploadProgress.value = 0
+  status.value = 'sending'
+  processedRows.value = 0
+  totalRows.value = 0
+  insertedCount.value = 0
+  updatedCount.value = 0
+  skippedCount.value = 0
   result.value = null
   errorMessage.value = ''
 
   try {
-    result.value = await uploadBetsCSV(selectedFile.value, (pct) => {
-      uploadProgress.value = pct
+    result.value = await uploadBetsCSV(selectedFile.value, (event: IngestProgressEvent) => {
+      if (event.type === 'start') {
+        totalRows.value = event.total_rows || 0
+        status.value = 'processing'
+      } else if (event.type === 'progress') {
+        processedRows.value = event.processed || 0
+        insertedCount.value = event.inserted || 0
+        updatedCount.value = event.updated || 0
+        skippedCount.value = event.skipped || 0
+      }
     })
     status.value = 'success'
 
@@ -193,17 +209,33 @@ function close() {
         </p>
       </div>
 
-      <!-- Upload progress bar -->
-      <div v-if="status === 'uploading'" class="mb-4">
+      <!-- Sending file indicator -->
+      <div v-if="status === 'sending'" class="mb-4">
+        <div class="flex items-center gap-2 text-xs text-gray-500">
+          <svg class="w-3.5 h-3.5 animate-spin text-teal-400" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          <span>Sending file to server…</span>
+        </div>
+      </div>
+
+      <!-- Processing progress -->
+      <div v-if="status === 'processing'" class="mb-4">
         <div class="flex justify-between text-[10px] text-gray-500 uppercase tracking-wider mb-1">
-          <span>Uploading & ingesting…</span>
-          <span class="font-mono text-teal-400">{{ uploadProgress }}%</span>
+          <span>Processing bets…</span>
+          <span class="font-mono text-teal-400">{{ processedRows.toLocaleString() }} / {{ totalRows.toLocaleString() }}</span>
         </div>
         <div class="w-full bg-gray-100 dark:bg-white/5 rounded-full h-1.5 overflow-hidden">
           <div
             class="bg-gradient-to-r from-teal-500 to-emerald-400 h-1.5 rounded-full transition-all duration-300"
-            :style="{ width: uploadProgress + '%' }"
+            :style="{ width: (totalRows > 0 ? Math.min(100, processedRows / totalRows * 100) : 0) + '%' }"
           />
+        </div>
+        <div class="flex gap-3 mt-2 text-[10px] font-mono">
+          <span class="text-emerald-400">{{ insertedCount.toLocaleString() }} new</span>
+          <span class="text-sky-400">{{ updatedCount.toLocaleString() }} updated</span>
+          <span class="text-gray-400">{{ skippedCount.toLocaleString() }} skipped</span>
         </div>
       </div>
 
@@ -255,19 +287,19 @@ function close() {
       <div class="flex gap-2">
         <button
           @click="ingest"
-          :disabled="!selectedFile || status === 'uploading'"
+          :disabled="!selectedFile || status === 'sending' || status === 'processing'"
           class="btn-glow flex-1 !py-2 !text-xs flex items-center justify-center gap-2"
-          :class="{ 'opacity-40 cursor-not-allowed': !selectedFile || status === 'uploading' }"
+          :class="{ 'opacity-40 cursor-not-allowed': !selectedFile || status === 'sending' || status === 'processing' }"
         >
-          <svg v-if="status === 'uploading'" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+          <svg v-if="status === 'sending' || status === 'processing'" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
           </svg>
-          {{ status === 'uploading' ? 'Ingesting…' : 'Ingest' }}
+          {{ status === 'sending' ? 'Sending…' : status === 'processing' ? 'Processing…' : 'Ingest' }}
         </button>
         <button
           @click="openFilePicker"
-          :disabled="status === 'uploading'"
+          :disabled="status === 'sending' || status === 'processing'"
           class="px-4 py-2 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 disabled:opacity-30 text-gray-600 dark:text-gray-300 text-xs font-medium transition-all"
         >
           Browse

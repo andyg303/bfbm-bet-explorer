@@ -8,12 +8,17 @@ Every query is scoped to the authenticated user's user_id.
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, Query, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime, timezone
 import uvicorn
+import asyncio
+import queue
+import threading
+import json
 import sys
 import os
 import tempfile
@@ -21,8 +26,8 @@ import shutil
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import get_db, Bet, User, init_db
-from scripts.ingest_bets import ingest_csv_file, sanitize_strategy_name
+from database import get_db, SessionLocal, Bet, User, init_db
+from scripts.ingest_bets import ingest_csv_file, sanitize_strategy_name, read_csv, normalize_columns
 from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability
 from api.auth import (
     get_current_user,
@@ -1120,9 +1125,15 @@ def get_monthly_pl(
 async def ingest_csv(
     file: UploadFile = File(...),
     user: User = Depends(require_active_subscription),
-    db: Session = Depends(get_db),
 ):
-    """Upload a CSV bet export file — bets are tagged to the authenticated user."""
+    """Upload a CSV bet export file with streaming progress via SSE.
+
+    The response is a text/event-stream that sends JSON events:
+      - {type: 'start', total_rows, filename}
+      - {type: 'progress', processed, total, inserted, updated, skipped}
+      - {type: 'complete', filename, inserted, updated, skipped, warnings, total_bets_in_db}
+      - {type: 'error', detail}
+    """
     if not file.filename or not file.filename.lower().endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a .csv")
 
@@ -1135,24 +1146,91 @@ async def ingest_csv(
         tmp.write(contents)
         tmp_path = tmp.name
 
+    # Quick validation before starting the stream
     try:
-        result = ingest_csv_file(tmp_path, db, user_id=user.id)
-        total_bets = db.query(Bet).filter(Bet.user_id == user.id).count()
-        return {
-            "filename": file.filename,
-            "inserted": result['inserted'],
-            "updated": result['updated'],
-            "skipped": result['skipped'],
-            "warnings": result.get('warnings', []),
-            "total_bets_in_db": total_bets,
-        }
+        test_df = read_csv(tmp_path)
+        _, _ = normalize_columns(test_df)
+        total_rows = len(test_df)
+        del test_df
     except ValueError as e:
-        # Missing required columns or other validation errors
+        os.unlink(tmp_path)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
         os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail=f"Failed to read CSV: {e}")
+
+    user_id = user.id
+    filename = file.filename
+    event_queue: queue.Queue = queue.Queue()
+
+    def run_processing():
+        """Run the actual ingestion in a background thread with its own DB session."""
+        db = SessionLocal()
+        try:
+            def on_progress(data):
+                event_queue.put(data)
+
+            result = ingest_csv_file(
+                tmp_path, db, user_id=user_id, progress_callback=on_progress
+            )
+            total_bets = db.query(Bet).filter(Bet.user_id == user_id).count()
+            event_queue.put({
+                'type': 'complete',
+                'filename': filename,
+                'inserted': result['inserted'],
+                'updated': result['updated'],
+                'skipped': result['skipped'],
+                'warnings': result.get('warnings', []),
+                'total_bets_in_db': total_bets,
+            })
+        except Exception as e:
+            event_queue.put({'type': 'error', 'detail': str(e)})
+        finally:
+            db.close()
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            event_queue.put(None)  # Sentinel to end the stream
+
+    async def event_stream():
+        # Send initial event with row count so frontend can show progress bar
+        yield f"data: {json.dumps({'type': 'start', 'total_rows': total_rows, 'filename': filename})}\n\n"
+
+        # Start processing in a background thread
+        thread = threading.Thread(target=run_processing, daemon=True)
+        thread.start()
+
+        # Stream events from the queue
+        while True:
+            # Drain all available events
+            found_sentinel = False
+            while True:
+                try:
+                    event = event_queue.get_nowait()
+                    if event is None:
+                        found_sentinel = True
+                        break
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue.Empty:
+                    break
+
+            if found_sentinel:
+                break
+
+            # Send SSE comment as keepalive (prevents proxy timeouts)
+            yield ": keepalive\n\n"
+            await asyncio.sleep(0.3)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',  # Tell nginx proxies not to buffer
+        },
+    )
 
 
 if __name__ == "__main__":

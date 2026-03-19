@@ -408,7 +408,7 @@ def safe_int(value):
 # Main ingestion
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def ingest_csv_file(filepath: str, db: Session, user_id: int = None):
+def ingest_csv_file(filepath: str, db: Session, user_id: int = None, progress_callback=None):
     """Ingest a single CSV file into the database.
 
     Supports both BFBM *bet_history* and *bet_data* export formats,
@@ -418,6 +418,8 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None):
         filepath: Path to CSV file.
         db: SQLAlchemy session.
         user_id: The authenticated user's ID. All bets will be tagged to this user.
+        progress_callback: Optional callable(dict) invoked periodically with
+            progress data: {type, processed, total, inserted, updated, skipped}.
 
     Returns:
         dict with keys: inserted, updated, skipped, warnings
@@ -429,6 +431,7 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None):
 
     # ── Column normalisation ──────────────────────────────────────────────
     df, warnings = normalize_columns(df)
+    total_rows = len(df)
 
     # ── Sanitise currency fields ──────────────────────────────────────────
     for field in CURRENCY_FIELDS:
@@ -445,8 +448,26 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None):
     updated = 0
     skipped = 0
     error_count = 0
+    _last_progress = 0
 
     for idx, row in df.iterrows():
+        # ── Progress reporting ────────────────────────────────────────
+        if progress_callback:
+            current = inserted + updated + skipped
+            if current - _last_progress >= 50:
+                _last_progress = current
+                try:
+                    progress_callback({
+                        'type': 'progress',
+                        'processed': current,
+                        'total': total_rows,
+                        'inserted': inserted,
+                        'updated': updated,
+                        'skipped': skipped,
+                    })
+                except Exception:
+                    pass
+
         try:
             # ── Status filter ─────────────────────────────────────────────
             status = safe_get(row, 'status')
@@ -594,6 +615,20 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None):
             continue
 
     db.commit()  # Final commit for remaining rows
+
+    # Final progress report
+    if progress_callback:
+        try:
+            progress_callback({
+                'type': 'progress',
+                'processed': inserted + updated + skipped,
+                'total': total_rows,
+                'inserted': inserted,
+                'updated': updated,
+                'skipped': skipped,
+            })
+        except Exception:
+            pass
 
     print(f"Completed: {inserted} inserted, {updated} updated, {skipped} skipped")
     return {

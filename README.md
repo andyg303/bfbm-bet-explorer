@@ -1,6 +1,17 @@
 # BFBM Bet Explorer
 
 A comprehensive betting strategy analysis tool with PostgreSQL database, FastAPI backend, and Vue.js frontend.
+Served on IP: 94.72.106.53
+
+TO DEPLOY ON SERVER:
+
+```bash
+ssh bot@94.72.106.53
+```
+Then:
+```bash
+cd ~/bfbm-bet-explorer && docker compose down && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d 2>&1
+```
 
 ## Features
 

@@ -247,27 +247,95 @@ export const getMonthlyPL = async (filters: FilterParams): Promise<MonthlyPLResp
   return response.data
 }
 
-export const uploadBetsCSV = async (
-  file: File,
-  onProgress?: (pct: number) => void,
-): Promise<{
+export interface IngestProgressEvent {
+  type: 'start' | 'progress' | 'complete' | 'error'
+  total_rows?: number
+  processed?: number
+  total?: number
+  inserted?: number
+  updated?: number
+  skipped?: number
+  filename?: string
+  warnings?: string[]
+  total_bets_in_db?: number
+  detail?: string
+}
+
+export interface IngestResult {
   filename: string
   inserted: number
   updated: number
   skipped: number
   total_bets_in_db: number
   warnings?: string[]
-}> => {
+}
+
+export const uploadBetsCSV = async (
+  file: File,
+  onProgress?: (event: IngestProgressEvent) => void,
+): Promise<IngestResult> => {
   const formData = new FormData()
   formData.append('file', file)
   const token = localStorage.getItem('bfbm_access_token')
-  const response = await axios.post(`${API_BASE_URL}/ingest`, formData, {
+
+  const response = await fetch(`${API_BASE_URL}/ingest`, {
+    method: 'POST',
+    body: formData,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
-    onUploadProgress: (e) => {
-      if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
-    },
   })
-  return response.data
+
+  if (!response.ok) {
+    let detail = `Request failed with status code ${response.status}`
+    try {
+      const err = await response.json()
+      detail = err.detail || detail
+    } catch {
+      // response wasn't JSON
+    }
+    throw new Error(detail)
+  }
+
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let result: IngestResult | null = null
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()! // keep incomplete line in buffer
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const data: IngestProgressEvent = JSON.parse(line.slice(6))
+          if (data.type === 'error') {
+            throw new Error(data.detail || 'Processing failed')
+          }
+          onProgress?.(data)
+          if (data.type === 'complete') {
+            result = {
+              filename: data.filename!,
+              inserted: data.inserted!,
+              updated: data.updated!,
+              skipped: data.skipped!,
+              total_bets_in_db: data.total_bets_in_db!,
+              warnings: data.warnings,
+            }
+          }
+        } catch (e) {
+          if (e instanceof SyntaxError) continue // skip malformed SSE lines
+          throw e
+        }
+      }
+    }
+  }
+
+  if (!result) throw new Error('Processing ended unexpectedly')
+  return result
 }
 
 export const deleteBet = async (id: number): Promise<void> => {
