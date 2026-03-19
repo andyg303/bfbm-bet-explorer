@@ -88,6 +88,14 @@ async def lifespan(app):
             "CREATE INDEX IF NOT EXISTS idx_user_strategy ON bets (user_id, strategy)"
         ))
 
+        # ── Bet table: new columns for bet_data format support ──
+        if 'market_name' not in columns:
+            conn.execute(text("ALTER TABLE bets ADD COLUMN market_name VARCHAR"))
+        if 'market_id' not in columns:
+            conn.execute(text("ALTER TABLE bets ADD COLUMN market_id VARCHAR"))
+        if 'start_time' not in columns:
+            conn.execute(text("ALTER TABLE bets ADD COLUMN start_time TIMESTAMP"))
+
         # ── User admin + subscription columns ──
         user_cols = [c['name'] for c in insp.get_columns('users')]
         if 'is_admin' not in user_cols:
@@ -1135,8 +1143,12 @@ async def ingest_csv(
             "inserted": result['inserted'],
             "updated": result['updated'],
             "skipped": result['skipped'],
+            "warnings": result.get('warnings', []),
             "total_bets_in_db": total_bets,
         }
+    except ValueError as e:
+        # Missing required columns or other validation errors
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:

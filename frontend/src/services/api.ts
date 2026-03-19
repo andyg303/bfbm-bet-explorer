@@ -256,6 +256,7 @@ export const uploadBetsCSV = async (
   updated: number
   skipped: number
   total_bets_in_db: number
+  warnings?: string[]
 }> => {
   const formData = new FormData()
   formData.append('file', file)

@@ -10,8 +10,9 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const status = ref<'idle' | 'uploading' | 'success' | 'error'>('idle')
 const uploadProgress = ref(0)
-const result = ref<{ filename: string; inserted: number; updated: number; skipped: number; total_bets_in_db: number } | null>(null)
+const result = ref<{ filename: string; inserted: number; updated: number; skipped: number; total_bets_in_db: number; warnings?: string[] } | null>(null)
 const errorMessage = ref('')
+const showHelp = ref(false)
 
 function openFilePicker() {
   fileInput.value?.click()
@@ -53,6 +54,7 @@ async function ingest() {
 
 function close() {
   panelOpen.value = false
+  showHelp.value = false
   if (status.value === 'success' || status.value === 'error') {
     status.value = 'idle'
     result.value = null
@@ -91,6 +93,12 @@ function close() {
             </svg>
           </div>
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Ingest Bet Data</h3>
+          <!-- Help icon -->
+          <button
+            @click.stop="showHelp = !showHelp"
+            class="w-5 h-5 rounded-full bg-gray-200 dark:bg-white/10 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-white/20 hover:text-gray-700 dark:hover:text-gray-200 transition-all text-[10px] font-bold"
+            title="CSV field requirements"
+          >?</button>
         </div>
         <button @click="close" class="text-gray-500 hover:text-gray-300 transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -99,8 +107,63 @@ function close() {
         </button>
       </div>
 
+      <!-- Help panel -->
+      <div v-if="showHelp" class="mb-4 p-3 rounded-lg bg-sky-500/10 border border-sky-500/20 text-xs text-gray-600 dark:text-gray-300 space-y-2 max-h-72 overflow-y-auto">
+        <p class="font-semibold text-sky-400 text-[11px] uppercase tracking-wider">CSV Field Requirements</p>
+
+        <div>
+          <p class="font-medium text-gray-800 dark:text-gray-200 mb-0.5">Required fields (import will fail without these):</p>
+          <ul class="list-disc list-inside space-y-0.5 text-[11px]">
+            <li><span class="font-mono text-sky-400">Profit/Loss</span> — <em>P/L</em> or <em>ProfitLoss</em></li>
+            <li><span class="font-mono text-sky-400">Status</span> — <em>Status</em></li>
+            <li><span class="font-mono text-sky-400">Bet ID</span> — <em>Bet Id</em> or <em>BetId</em></li>
+          </ul>
+        </div>
+
+        <div>
+          <p class="font-medium text-gray-800 dark:text-gray-200 mb-0.5">Recommended fields:</p>
+          <ul class="list-disc list-inside space-y-0.5 text-[11px]">
+            <li><span class="font-mono text-amber-400">Placed Date</span> — <em>Placed date</em> or <em>PlacedDate</em></li>
+            <li><span class="font-mono text-amber-400">Strategy</span> — <em>Strategy</em> or <em>StrategyName</em></li>
+            <li><span class="font-mono text-amber-400">Selection</span> — <em>Selection</em> or <em>SelectionName</em></li>
+          </ul>
+        </div>
+
+        <div>
+          <p class="font-medium text-gray-800 dark:text-gray-200 mb-0.5">Optional fields (used when present):</p>
+          <p class="text-[11px] leading-relaxed">
+            Event, Description, Bet type, Matched amount, 
+            Avg. price matched, Price requested, BSP, Loss rec. amount, 
+            Total matched on runner/market, Short description, Tipster, 
+            Matched date, Settled date, Start time, Country code, Competition, 
+            Favorite position, Market type, Market, Market ID, 
+            Number of selections
+          </p>
+        </div>
+
+        <div>
+          <p class="font-medium text-gray-800 dark:text-gray-200 mb-0.5">BFBM optional columns (recognised &amp; ignored):</p>
+          <p class="text-[10px] leading-relaxed text-gray-500">
+            % of betting bank, Betting bank, Competition ID, Currency, 
+            Detailed market name, Event type ID, Handicap, 
+            Market type variant, Order type, P/L as % of betting bank, 
+            Persistence, Price reduced, Runner position, Selection ID, 
+            Settle as loss, Settle as win, Simulated bet?, 
+            Size canceled, Size lapsed, Size settled, Strategy ID, 
+            Strategy selection ID, Unmatched amount, Void bet
+          </p>
+        </div>
+
+        <div class="pt-1 border-t border-sky-500/10 text-[10px] text-gray-500 space-y-1">
+          <p>✓ Both <strong>bet_data</strong> and <strong>bet_history</strong> BFBM export formats supported</p>
+          <p>✓ Column order doesn't matter</p>
+          <p>✓ Files exported via Excel (CSV re-save) are supported</p>
+          <p>✓ Currency symbols (£) and encoding artefacts are handled automatically</p>
+        </div>
+      </div>
+
       <p class="text-xs text-gray-500 mb-4">
-        Select a Betfair/BetMaker CSV export file to import. Duplicates are handled automatically.
+        Upload a BFBM CSV export file (bet_data or bet_history format). Duplicates are handled automatically.
       </p>
 
       <!-- Hidden file input -->
@@ -169,6 +232,15 @@ function close() {
         <p class="text-[10px] text-gray-500 mt-2 text-center font-mono">
           {{ result.total_bets_in_db.toLocaleString() }} total bets in database
         </p>
+        <!-- Ingestion warnings -->
+        <div v-if="result.warnings && result.warnings.length" class="mt-2 pt-2 border-t border-emerald-500/10">
+          <p class="text-[10px] text-amber-400 font-medium mb-1">⚠ Warnings:</p>
+          <ul class="space-y-0.5">
+            <li v-for="(w, i) in result.warnings" :key="i" class="text-[10px] text-amber-400/80 leading-tight">
+              {{ w }}
+            </li>
+          </ul>
+        </div>
       </div>
 
       <!-- Error -->
