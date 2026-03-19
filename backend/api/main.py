@@ -1201,26 +1201,38 @@ async def ingest_csv(
         thread = threading.Thread(target=run_processing, daemon=True)
         thread.start()
 
-        # Stream events from the queue
+        # Stream events from the queue.
+        # Only yield the LATEST progress event per cycle to avoid bursts
+        # when many events queue up during slow DB commits.
         while True:
-            # Drain all available events
-            found_sentinel = False
+            latest_progress = None
+            done = False
+
+            # Drain everything currently in the queue
             while True:
                 try:
                     event = event_queue.get_nowait()
                     if event is None:
-                        found_sentinel = True
+                        done = True
                         break
-                    yield f"data: {json.dumps(event)}\n\n"
+                    if event.get('type') == 'progress':
+                        latest_progress = event  # only keep the freshest
+                    else:
+                        # Non-progress events (complete, error) always sent
+                        yield f"data: {json.dumps(event)}\n\n"
                 except queue.Empty:
                     break
 
-            if found_sentinel:
+            # Send at most ONE progress update per cycle
+            if latest_progress:
+                yield f"data: {json.dumps(latest_progress)}\n\n"
+
+            if done:
                 break
 
-            # Send SSE comment as keepalive (prevents proxy timeouts)
+            # SSE comment keepalive (prevents proxy timeouts)
             yield ": keepalive\n\n"
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.15)
 
     return StreamingResponse(
         event_stream(),

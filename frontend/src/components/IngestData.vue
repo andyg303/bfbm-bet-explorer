@@ -42,17 +42,34 @@ async function ingest() {
   errorMessage.value = ''
 
   try {
+    // RAF-throttled progress so even burst events look smooth
+    let pendingProgress: IngestProgressEvent | null = null
+    let rafHandle = 0
+    const flushProgress = () => {
+      rafHandle = 0
+      if (pendingProgress) {
+        processedRows.value = pendingProgress.processed || 0
+        insertedCount.value = pendingProgress.inserted || 0
+        updatedCount.value = pendingProgress.updated || 0
+        skippedCount.value = pendingProgress.skipped || 0
+        pendingProgress = null
+      }
+    }
+
     result.value = await uploadBetsCSV(selectedFile.value, (event: IngestProgressEvent) => {
       if (event.type === 'start') {
         totalRows.value = event.total_rows || 0
         status.value = 'processing'
       } else if (event.type === 'progress') {
-        processedRows.value = event.processed || 0
-        insertedCount.value = event.inserted || 0
-        updatedCount.value = event.updated || 0
-        skippedCount.value = event.skipped || 0
+        pendingProgress = event
+        if (!rafHandle) {
+          rafHandle = requestAnimationFrame(flushProgress)
+        }
       }
     })
+    // Flush any remaining progress before showing success
+    if (rafHandle) cancelAnimationFrame(rafHandle)
+    flushProgress()
     status.value = 'success'
 
     // Refresh all app data

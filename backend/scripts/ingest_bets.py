@@ -454,7 +454,7 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None, progress_ca
         # ── Progress reporting ────────────────────────────────────────
         if progress_callback:
             current = inserted + updated + skipped
-            if current - _last_progress >= 50:
+            if current - _last_progress >= 25:
                 _last_progress = current
                 try:
                     progress_callback({

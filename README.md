@@ -10,7 +10,7 @@ ssh bot@94.72.106.53
 ```
 Then:
 ```bash
-cd ~/bfbm-bet-explorer && docker compose down && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d 2>&1
+cd ~/bfbm-bet-explorer && git pull && docker compose down && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d 2>&1
 ```
 
 ## Features
