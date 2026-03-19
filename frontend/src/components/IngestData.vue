@@ -15,6 +15,7 @@ const insertedCount = ref(0)
 const updatedCount = ref(0)
 const skippedCount = ref(0)
 const result = ref<{ filename: string; inserted: number; updated: number; skipped: number; total_bets_in_db: number; warnings?: string[] } | null>(null)
+const phaseLabel = ref('Preparing data…')
 const errorMessage = ref('')
 const showHelp = ref(false)
 
@@ -38,6 +39,7 @@ async function ingest() {
   insertedCount.value = 0
   updatedCount.value = 0
   skippedCount.value = 0
+  phaseLabel.value = 'Preparing data…'
   result.value = null
   errorMessage.value = ''
 
@@ -52,6 +54,9 @@ async function ingest() {
         insertedCount.value = pendingProgress.inserted || 0
         updatedCount.value = pendingProgress.updated || 0
         skippedCount.value = pendingProgress.skipped || 0
+        if ((pendingProgress as any).phase) {
+          phaseLabel.value = (pendingProgress as any).phase
+        }
         pendingProgress = null
       }
     }
@@ -240,16 +245,24 @@ function close() {
       <!-- Processing progress -->
       <div v-if="status === 'processing'" class="mb-4">
         <div class="flex justify-between text-[10px] text-gray-500 uppercase tracking-wider mb-1">
-          <span>Processing bets…</span>
-          <span class="font-mono text-teal-400">{{ processedRows.toLocaleString() }} / {{ totalRows.toLocaleString() }}</span>
+          <span>{{ processedRows > 0 ? 'Processing bets…' : phaseLabel }}</span>
+          <span v-if="processedRows > 0" class="font-mono text-teal-400">{{ processedRows.toLocaleString() }} / {{ totalRows.toLocaleString() }}</span>
+          <span v-else class="font-mono text-gray-400">{{ totalRows.toLocaleString() }} rows</span>
         </div>
         <div class="w-full bg-gray-100 dark:bg-white/5 rounded-full h-1.5 overflow-hidden">
+          <!-- Indeterminate pulsing bar during preparation -->
           <div
+            v-if="processedRows === 0"
+            class="bg-gradient-to-r from-teal-500 to-emerald-400 h-1.5 rounded-full w-1/3 animate-pulse"
+          />
+          <!-- Real progress bar -->
+          <div
+            v-else
             class="bg-gradient-to-r from-teal-500 to-emerald-400 h-1.5 rounded-full transition-all duration-300"
             :style="{ width: (totalRows > 0 ? Math.min(100, processedRows / totalRows * 100) : 0) + '%' }"
           />
         </div>
-        <div class="flex gap-3 mt-2 text-[10px] font-mono">
+        <div v-if="processedRows > 0" class="flex gap-3 mt-2 text-[10px] font-mono">
           <span class="text-emerald-400">{{ insertedCount.toLocaleString() }} new</span>
           <span class="text-sky-400">{{ updatedCount.toLocaleString() }} updated</span>
           <span class="text-gray-400">{{ skippedCount.toLocaleString() }} skipped</span>

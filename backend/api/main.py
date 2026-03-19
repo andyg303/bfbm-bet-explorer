@@ -1194,6 +1194,13 @@ async def ingest_csv(
             event_queue.put(None)  # Sentinel to end the stream
 
     async def event_stream():
+        # ── Flush proxy buffers ───────────────────────────────────────
+        # The outer host nginx (reverse-proxying to the Docker stack)
+        # buffers ~4-8 KB before forwarding to the client.  Sending a
+        # large SSE comment (ignored by browsers) forces the buffer to
+        # flush so all subsequent events arrive in real-time.
+        yield ": " + " " * 8192 + "\n\n"
+
         # Send initial event with row count so frontend can show progress bar
         yield f"data: {json.dumps({'type': 'start', 'total_rows': total_rows, 'filename': filename})}\n\n"
 

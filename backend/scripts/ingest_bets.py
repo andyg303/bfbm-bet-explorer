@@ -433,15 +433,35 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None, progress_ca
     df, warnings = normalize_columns(df)
     total_rows = len(df)
 
+    def _report_phase(phase_label):
+        """Send a progress event during preprocessing so the stream stays alive."""
+        if progress_callback:
+            try:
+                progress_callback({
+                    'type': 'progress',
+                    'phase': phase_label,
+                    'processed': 0,
+                    'total': total_rows,
+                    'inserted': 0,
+                    'updated': 0,
+                    'skipped': 0,
+                })
+            except Exception:
+                pass
+
     # ── Sanitise currency fields ──────────────────────────────────────────
+    _report_phase('Cleaning monetary values…')
     for field in CURRENCY_FIELDS:
         if field in df.columns:
             df[field] = df[field].apply(sanitize_currency)
 
     # ── Parse date fields ─────────────────────────────────────────────────
+    _report_phase('Parsing dates…')
     for field in DATE_FIELDS:
         if field in df.columns:
             df[field] = df[field].apply(parse_datetime)
+
+    _report_phase('Importing bets…')
 
     # ── Row-by-row processing ─────────────────────────────────────────────
     inserted = 0
