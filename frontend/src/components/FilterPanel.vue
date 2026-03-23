@@ -59,7 +59,7 @@ function clearFilters() {
       </div>
 
       <div>
-        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Event Type</label>
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Sport</label>
         <select v-model="betStore.filters.events" multiple class="input-field !py-1.5 text-xs" style="min-height: 60px;">
           <option v-for="event in options.events" :key="event" :value="event">{{ event }}</option>
         </select>

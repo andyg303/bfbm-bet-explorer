@@ -107,8 +107,15 @@ function formatTime(description: string | null | undefined) {
 
 function formatEventName(description: string | null | undefined) {
   if (!description) return '-'
-  // Strip leading time (e.g. "15:00 Southend Dogs" → "Southend Dogs")
-  return description.replace(/^\d{1,2}:\d{2}\s*/, '') || description
+  // Strip leading time
+  let name = description.replace(/^\d{1,2}:\d{2}\s*/, '')
+  // Take first segment before backslash (strips "\Match Odds\The Draw" etc.)
+  name = name.split(/[\\\/]/).map(s => s.trim()).filter(Boolean)[0] || name
+  // Match format: "Bologna v Lazio" — keep as-is
+  if (/\sv\s/i.test(name)) return name
+  // Racing format: "Oxford 2nd Aug" → just the venue name (strip date suffix)
+  name = name.replace(/\s+\d{1,2}(?:st|nd|rd|th)\s+\w{3,9}(?:\s+\d{2,4})?$/i, '')
+  return name || description
 }
 
 function changePageSize(newSize: number) {
