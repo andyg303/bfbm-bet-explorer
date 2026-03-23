@@ -98,6 +98,19 @@ function formatDate(date: string | null) {
   return new Date(date).toLocaleDateString()
 }
 
+function formatTime(description: string | null | undefined) {
+  if (!description) return '-'
+  // Match HH:MM at the start of the description (e.g. "15:00 Southend...")
+  const match = description.match(/^(\d{1,2}:\d{2})/)
+  return match ? match[1] : '-'
+}
+
+function formatEventName(description: string | null | undefined) {
+  if (!description) return '-'
+  // Strip leading time (e.g. "15:00 Southend Dogs" → "Southend Dogs")
+  return description.replace(/^\d{1,2}:\d{2}\s*/, '') || description
+}
+
 function changePageSize(newSize: number) {
   pageSize.value = newSize
   currentPage.value = 0
@@ -117,14 +130,14 @@ async function generateCSVContent() {
   
   // Create CSV content
   const headers = [
-    'Date', 'Strategy', 'Event', 'Selection', 'Type', 'Stake', 'Odds', 'BSP',
+    'Date', 'Time', 'Event', 'Selection', 'Sport', 'Strategy', 'Type', 'Stake', 'Odds', 'BSP',
     'BSP Diff', 'BSP %', 'BSP Prob', 'Liability', 'P/L', 'Market', 'Competition'
   ]
   
   if (isCustomStaking.value) {
-    headers.splice(5, 0, 'Recalc Stake')
-    headers.splice(12, 0, 'Recalc Liability')
-    headers.splice(14, 0, 'Recalc P/L')
+    headers.splice(7, 0, 'Recalc Stake')
+    headers.splice(14, 0, 'Recalc Liability')
+    headers.splice(16, 0, 'Recalc P/L')
   }
   
   if (isDedup.value) {
@@ -136,9 +149,11 @@ async function generateCSVContent() {
   for (const bet of allBets) {
     const row = [
       formatDate(bet.settled_date),
-      `"${bet.strategy || ''}"`,
-      `"${bet.event || ''}"`,
+      formatTime(bet.description),
+      `"${formatEventName(bet.description)}"`,
       `"${bet.selection || ''}"`,
+      `"${bet.event || ''}"`,
+      `"${bet.strategy || ''}"`,
       bet.bet_type || '',
       bet.matched_amount?.toFixed(2) || '',
       bet.avg_price_matched?.toFixed(2) || '',
@@ -153,9 +168,9 @@ async function generateCSVContent() {
     ]
     
     if (isCustomStaking.value && bet.recalculated_stake) {
-      row.splice(5, 0, bet.recalculated_stake.toFixed(2))
-      row.splice(12, 0, bet.recalculated_liability?.toFixed(2) || '')
-      row.splice(14, 0, bet.recalculated_pl?.toFixed(2) || '')
+      row.splice(7, 0, bet.recalculated_stake.toFixed(2))
+      row.splice(14, 0, bet.recalculated_liability?.toFixed(2) || '')
+      row.splice(16, 0, bet.recalculated_pl?.toFixed(2) || '')
     }
     
     if (isDedup.value) {
@@ -236,10 +251,12 @@ async function handleDelete(bet: any) {
         <thead>
           <tr>
             <th @click="sort('settled_date')" class="cursor-pointer hover:text-teal-400 transition-colors">Date <span v-if="sortKey === 'settled_date'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th class="whitespace-nowrap">Time</th>
+            <th @click="sort('description')" class="cursor-pointer hover:text-teal-400 transition-colors">Event <span v-if="sortKey === 'description'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('selection')" class="cursor-pointer hover:text-teal-400 transition-colors">Selection <span v-if="sortKey === 'selection'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('event')" class="cursor-pointer hover:text-teal-400 transition-colors">Sport <span v-if="sortKey === 'event'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('strategy')" class="cursor-pointer hover:text-teal-400 transition-colors">Strategy <span v-if="sortKey === 'strategy'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th v-if="isDedup" class="text-center whitespace-nowrap text-teal-400"># Strats</th>
-            <th @click="sort('event')" class="cursor-pointer hover:text-teal-400 transition-colors">Event <span v-if="sortKey === 'event'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
-            <th @click="sort('selection')" class="cursor-pointer hover:text-teal-400 transition-colors">Selection <span v-if="sortKey === 'selection'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('bet_type')" class="cursor-pointer hover:text-teal-400 transition-colors">Type <span v-if="sortKey === 'bet_type'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('matched_amount')" class="cursor-pointer hover:text-teal-400 transition-colors">Stake <span v-if="sortKey === 'matched_amount'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('avg_price_matched')" class="cursor-pointer hover:text-teal-400 transition-colors">Odds <span v-if="sortKey === 'avg_price_matched'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
@@ -257,6 +274,10 @@ async function handleDelete(bet: any) {
         <tbody>
           <tr v-for="bet in bets" :key="bet.id">
             <td class="whitespace-nowrap text-gray-500 font-mono text-xs">{{ formatDate(bet.settled_date) }}</td>
+            <td class="whitespace-nowrap text-gray-500 font-mono text-xs">{{ formatTime(bet.description) }}</td>
+            <td class="text-gray-600 dark:text-gray-300 max-w-[150px] truncate" :title="bet.description || ''">{{ formatEventName(bet.description) }}</td>
+            <td class="whitespace-nowrap text-gray-600 dark:text-gray-300">{{ bet.selection }}</td>
+            <td class="text-gray-600 dark:text-gray-300 max-w-[120px] truncate" :title="bet.event || ''">{{ bet.event }}</td>
             <td class="text-gray-600 dark:text-gray-300 max-w-[140px] truncate" :title="bet.strategy || ''">{{ bet.strategy }}</td>
             <td v-if="isDedup" class="text-center">
               <span
@@ -266,8 +287,6 @@ async function handleDelete(bet: any) {
               >{{ bet.strategy_count }}</span>
               <span v-else class="text-[10px] text-gray-500 font-mono">1</span>
             </td>
-            <td class="text-gray-600 dark:text-gray-300 max-w-[140px] truncate" :title="bet.event || ''">{{ bet.event }}</td>
-            <td class="whitespace-nowrap text-gray-600 dark:text-gray-300">{{ bet.selection }}</td>
             <td class="whitespace-nowrap">
               <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md" :class="bet.bet_type === 'BACK' ? 'bg-sky-500/15 text-sky-400 border border-sky-500/20' : 'bg-rose-500/15 text-rose-400 border border-rose-500/20'">{{ bet.bet_type }}</span>
             </td>
@@ -304,7 +323,7 @@ async function handleDelete(bet: any) {
               <div v-else :class="(bet.profit_loss || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">£{{ bet.profit_loss?.toFixed(2) }}</div>
             </td>
             <td class="whitespace-nowrap text-gray-500">{{ bet.market_type }}</td>
-            <td class="text-gray-500 max-w-[120px] truncate">{{ bet.competition }}</td>
+            <td class="text-gray-500 max-w-[120px] truncate" :title="bet.competition || ''">{{ bet.competition }}</td>
             <td class="text-center">
               <button @click="handleDelete(bet)" :disabled="deletingId === bet.id" title="Soft-delete this bet" class="p-1 rounded text-gray-600 hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                 <svg v-if="deletingId !== bet.id" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -313,7 +332,7 @@ async function handleDelete(bet: any) {
             </td>
           </tr>
           <tr v-if="!bets || bets.length === 0">
-            <td :colspan="isDedup ? 17 : 16" class="px-6 py-8 text-center text-sm text-gray-600">No bets found</td>
+            <td :colspan="isDedup ? 19 : 18" class="px-6 py-8 text-center text-sm text-gray-600">No bets found</td>
           </tr>
         </tbody>
       </table>
