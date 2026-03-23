@@ -28,6 +28,7 @@ export const useBetStore = defineStore('bet', () => {
   const stakingParams = ref({
     staking_type: 'default',
     base_stake: 10,
+    deduplicate: false,
   })
 
   const recalculatedStats = ref<any>(null)

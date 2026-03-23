@@ -28,7 +28,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database import get_db, SessionLocal, Bet, User, init_db
 from scripts.ingest_bets import ingest_csv_file, sanitize_strategy_name, read_csv, normalize_columns
-from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability
+from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability, deduplicate_bets
 from api.auth import (
     get_current_user,
     get_password_hash,
@@ -156,6 +156,7 @@ class FilterParams(BaseModel):
     description_search: Optional[str] = None
     staking_type: Optional[str] = 'default'
     base_stake: Optional[float] = 10
+    deduplicate: Optional[bool] = False
 
 
 class StakingParams(BaseModel):
@@ -637,6 +638,9 @@ def get_strategy_stats(
         query = apply_filters(query, filters, user.id)
         bets = query.all()
 
+        if filters.deduplicate:
+            bets, _, _ = deduplicate_bets(bets)
+
         strategy_data = {}
         for bet in bets:
             if not bet.strategy or not bet.avg_price_matched or bet.profit_loss is None:
@@ -761,10 +765,20 @@ def get_bets(
     query = db.query(Bet)
     query = apply_filters(query, filters, user.id)
     query = query.order_by(Bet.settled_date.desc())
-    total = query.count()
-    bets = query.offset(skip).limit(limit).all()
 
     if filters.staking_type and filters.staking_type != 'default':
+        strategy_counts = {}
+        strategies_map = {}
+        if filters.deduplicate:
+            all_bets = query.all()
+            deduped, strategy_counts, strategies_map = deduplicate_bets(all_bets)
+            deduped.sort(key=lambda b: b.settled_date or datetime.min, reverse=True)
+            total = len(deduped)
+            bets = deduped[skip:skip + limit]
+        else:
+            total = query.count()
+            bets = query.offset(skip).limit(limit).all()
+
         bet_list = []
         for bet in bets:
             bet_dict = {
@@ -794,9 +808,14 @@ def get_bets(
                 bet_dict["recalculated_stake"] = round(new_stake, 2)
                 bet_dict["recalculated_pl"] = round(new_pl, 2)
                 bet_dict["recalculated_liability"] = round(new_liability, 2)
+            if filters.deduplicate:
+                bet_dict["strategy_count"] = strategy_counts.get(bet.id, 1)
+                bet_dict["strategies_triggered"] = strategies_map.get(bet.id, [bet.strategy] if bet.strategy else [])
             bet_list.append(bet_dict)
         return {"total": total, "bets": bet_list}
 
+    total = query.count()
+    bets = query.offset(skip).limit(limit).all()
     return {"total": total, "bets": bets}
 
 
@@ -812,6 +831,8 @@ def get_pl_over_time(
         query = apply_filters(query, filters, user.id)
         query = query.order_by(Bet.settled_date)
         bets = query.all()
+        if filters.deduplicate:
+            bets, _, _ = deduplicate_bets(bets)
         daily_data = {}
         for bet in bets:
             if not bet.avg_price_matched or bet.profit_loss is None or not bet.matched_amount:
@@ -867,6 +888,10 @@ def get_summary_stats(
 
     if filters.staking_type and filters.staking_type != 'default':
         bets = query.all()
+        if filters.deduplicate:
+            bets, _, _ = deduplicate_bets(bets)
+            total_bets = len(bets)
+            num_strategies = len(set(b.strategy for b in bets if b.strategy))
         total_pl = 0
         total_staked = 0
         total_stake_only = 0
@@ -926,6 +951,8 @@ def recalculate_staking(
     query = db.query(Bet)
     query = apply_filters(query, filters, user.id)
     bets = query.all()
+    if filters.deduplicate:
+        bets, _, _ = deduplicate_bets(bets)
     recalculated_bets = []
     total_pl = 0
     total_staked = 0
@@ -969,6 +996,8 @@ def get_odds_bands_profit(
     query = db.query(Bet)
     query = apply_filters(query, filters, user.id)
     bets = query.all()
+    if filters.deduplicate and filters.staking_type and filters.staking_type != 'default':
+        bets, _, _ = deduplicate_bets(bets)
 
     bands = {
         "1.01-2.00": {"min": 1.01, "max": 2.00, "bets": [], "total_pl": 0, "total_staked": 0},
@@ -1032,6 +1061,8 @@ def get_monthly_pl(
     query = apply_filters(query, filters, user.id)
     query = query.order_by(Bet.settled_date)
     bets = query.all()
+    if filters.deduplicate and filters.staking_type and filters.staking_type != 'default':
+        bets, _, _ = deduplicate_bets(bets)
 
     monthly: dict[str, float] = {}
     daily_buckets: dict[str, float] = {}

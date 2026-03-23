@@ -119,6 +119,7 @@ export interface FilterParams {
 export interface StakingParams {
   staking_type: string
   base_stake: number
+  deduplicate?: boolean
 }
 
 export interface StrategyStats {
@@ -166,6 +167,8 @@ export interface Bet {
   recalculated_pl?: number
   recalculated_liability?: number
   is_deleted?: boolean
+  strategy_count?: number
+  strategies_triggered?: string[]
 }
 
 export interface PLDataPoint {

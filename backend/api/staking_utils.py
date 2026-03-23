@@ -45,3 +45,60 @@ def calculate_stake_or_liability(
         return (avg_price_matched - 1) * new_stake
     else:
         return new_stake
+
+
+def deduplicate_bets(bets: list) -> tuple:
+    """
+    Deduplicate bets by market+selection+bet_type.
+
+    When the same selection appears in the same market across multiple
+    strategies, only the first bet (by placed_date) is kept.
+
+    Dedup key:
+      - If market_id is available: (market_id, selection, bet_type)
+      - Otherwise: (event|market_type, selection, bet_type)
+
+    Returns:
+        (deduped_bets, strategy_counts, strategies_map)
+        - deduped_bets: list of Bet objects (one per unique market position)
+        - strategy_counts: dict  bet.id → number of unique strategies
+        - strategies_map:  dict  bet.id → list of strategy names
+    """
+    from collections import defaultdict
+    from datetime import datetime as _dt
+
+    groups = defaultdict(list)
+    for bet in bets:
+        # Build a dedup key: same market + selection + bet_type = same bet
+        if bet.market_id:
+            market_part = bet.market_id.strip()
+        else:
+            market_part = (
+                f"{(bet.event or '').lower().strip()}"
+                f"|{(bet.market_type or '').upper().strip()}"
+            )
+        key = (
+            market_part,
+            (bet.selection or '').lower().strip(),
+            (bet.bet_type or '').upper().strip(),
+        )
+        groups[key].append(bet)
+
+    deduped = []
+    strategy_counts = {}
+    strategies_map = {}
+
+    for key, group_bets in groups.items():
+        # Sort by placed_date (earliest first); fall back to matched then settled
+        group_bets.sort(
+            key=lambda b: (
+                b.placed_date or b.matched_date or b.settled_date or _dt.min
+            )
+        )
+        first_bet = group_bets[0]
+        deduped.append(first_bet)
+        unique_strats = list(set(b.strategy for b in group_bets if b.strategy))
+        strategy_counts[first_bet.id] = len(unique_strats) if unique_strats else 1
+        strategies_map[first_bet.id] = unique_strats
+
+    return deduped, strategy_counts, strategies_map

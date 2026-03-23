@@ -14,6 +14,8 @@ const sortDirection = ref<'asc' | 'desc'>('desc')
 
 const isCustomStaking = computed(() => betStore.stakingParams.staking_type !== 'default')
 
+const isDedup = computed(() => isCustomStaking.value && betStore.stakingParams.deduplicate)
+
 const bets = computed(() => {
   const data = betStore.bets || []
   if (!data.length) return data
@@ -125,6 +127,10 @@ async function generateCSVContent() {
     headers.splice(14, 0, 'Recalc P/L')
   }
   
+  if (isDedup.value) {
+    headers.push('# Strats', 'Strategies Triggered')
+  }
+  
   const csvRows = [headers.join(',')]
   
   for (const bet of allBets) {
@@ -150,6 +156,11 @@ async function generateCSVContent() {
       row.splice(5, 0, bet.recalculated_stake.toFixed(2))
       row.splice(12, 0, bet.recalculated_liability?.toFixed(2) || '')
       row.splice(14, 0, bet.recalculated_pl?.toFixed(2) || '')
+    }
+    
+    if (isDedup.value) {
+      row.push(String(bet.strategy_count || 1))
+      row.push(`"${(bet.strategies_triggered || []).join(', ')}"`)
     }
     
     csvRows.push(row.join(','))
@@ -226,6 +237,7 @@ async function handleDelete(bet: any) {
           <tr>
             <th @click="sort('settled_date')" class="cursor-pointer hover:text-teal-400 transition-colors">Date <span v-if="sortKey === 'settled_date'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('strategy')" class="cursor-pointer hover:text-teal-400 transition-colors">Strategy <span v-if="sortKey === 'strategy'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th v-if="isDedup" class="text-center whitespace-nowrap text-teal-400"># Strats</th>
             <th @click="sort('event')" class="cursor-pointer hover:text-teal-400 transition-colors">Event <span v-if="sortKey === 'event'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('selection')" class="cursor-pointer hover:text-teal-400 transition-colors">Selection <span v-if="sortKey === 'selection'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('bet_type')" class="cursor-pointer hover:text-teal-400 transition-colors">Type <span v-if="sortKey === 'bet_type'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
@@ -245,8 +257,16 @@ async function handleDelete(bet: any) {
         <tbody>
           <tr v-for="bet in bets" :key="bet.id">
             <td class="whitespace-nowrap text-gray-500 font-mono text-xs">{{ formatDate(bet.settled_date) }}</td>
-            <td class="text-gray-600 dark:text-gray-300 max-w-[140px] truncate">{{ bet.strategy }}</td>
-            <td class="text-gray-600 dark:text-gray-300 max-w-[140px] truncate">{{ bet.event }}</td>
+            <td class="text-gray-600 dark:text-gray-300 max-w-[140px] truncate" :title="bet.strategy || ''">{{ bet.strategy }}</td>
+            <td v-if="isDedup" class="text-center">
+              <span
+                v-if="bet.strategy_count && bet.strategy_count > 1"
+                class="inline-flex items-center justify-center min-w-[22px] px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/20 cursor-help"
+                :title="bet.strategies_triggered ? bet.strategies_triggered.join('\n') : ''"
+              >{{ bet.strategy_count }}</span>
+              <span v-else class="text-[10px] text-gray-500 font-mono">1</span>
+            </td>
+            <td class="text-gray-600 dark:text-gray-300 max-w-[140px] truncate" :title="bet.event || ''">{{ bet.event }}</td>
             <td class="whitespace-nowrap text-gray-600 dark:text-gray-300">{{ bet.selection }}</td>
             <td class="whitespace-nowrap">
               <span class="px-2 py-0.5 text-[10px] font-bold uppercase rounded-md" :class="bet.bet_type === 'BACK' ? 'bg-sky-500/15 text-sky-400 border border-sky-500/20' : 'bg-rose-500/15 text-rose-400 border border-rose-500/20'">{{ bet.bet_type }}</span>
@@ -293,7 +313,7 @@ async function handleDelete(bet: any) {
             </td>
           </tr>
           <tr v-if="!bets || bets.length === 0">
-            <td colspan="16" class="px-6 py-8 text-center text-sm text-gray-600">No bets found</td>
+            <td :colspan="isDedup ? 17 : 16" class="px-6 py-8 text-center text-sm text-gray-600">No bets found</td>
           </tr>
         </tbody>
       </table>
