@@ -49,14 +49,15 @@ def calculate_stake_or_liability(
 
 def deduplicate_bets(bets: list) -> tuple:
     """
-    Deduplicate bets by market+selection+bet_type.
+    Deduplicate bets so the same market position is only counted once,
+    even when multiple strategies triggered the same bet.
 
-    When the same selection appears in the same market across multiple
-    strategies, only the first bet (by placed_date) is kept.
+    Dedup key (must match ALL parts to be considered the same bet):
+      Primary:   (selection, market_id, start_time)
+      Fallback:  (selection, description, start_time)
 
-    Dedup key:
-      - If market_id is available: (market_id, selection, bet_type)
-      - Otherwise: (event|market_type, selection, bet_type)
+    start_time is included to guard against market-id reuse across
+    different race meetings / fixtures.
 
     Returns:
         (deduped_bets, strategy_counts, strategies_map)
@@ -69,19 +70,18 @@ def deduplicate_bets(bets: list) -> tuple:
 
     groups = defaultdict(list)
     for bet in bets:
-        # Build a dedup key: same market + selection + bet_type = same bet
-        if bet.market_id:
+        selection_part = (bet.selection or '').lower().strip()
+
+        # Time component — normalise to minute precision
+        st = bet.start_time or bet.settled_date
+        time_part = st.strftime('%Y-%m-%d %H:%M') if st else ''
+
+        if bet.market_id and bet.market_id.strip():
             market_part = bet.market_id.strip()
         else:
-            market_part = (
-                f"{(bet.event or '').lower().strip()}"
-                f"|{(bet.market_type or '').upper().strip()}"
-            )
-        key = (
-            market_part,
-            (bet.selection or '').lower().strip(),
-            (bet.bet_type or '').upper().strip(),
-        )
+            market_part = (bet.description or '').lower().strip()
+
+        key = (selection_part, market_part, time_part)
         groups[key].append(bet)
 
     deduped = []
