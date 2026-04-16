@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit, MonthlyPLResponse, ArchivedStrategy } from '../services/api'
+import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit, MonthlyPLResponse, ArchivedStrategy, MergeSuggestion, StrategyInfo } from '../services/api'
 import * as api from '../services/api'
 
 export const useBetStore = defineStore('bet', () => {
@@ -13,6 +13,8 @@ export const useBetStore = defineStore('bet', () => {
   const oddsBandsData = ref<OddsBandProfit[]>([])
   const monthlyPLData = ref<MonthlyPLResponse | null>(null)
   const archivedStrategies = ref<ArchivedStrategy[]>([])
+  const mergeSuggestions = ref<MergeSuggestion[]>([])
+  const allStrategies = ref<StrategyInfo[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -208,6 +210,40 @@ export const useBetStore = defineStore('bet', () => {
     }
   }
 
+  async function loadMergeSuggestions() {
+    try {
+      mergeSuggestions.value = await api.getMergeSuggestions()
+    } catch (e: any) {
+      error.value = e.message
+    }
+  }
+
+  async function loadAllStrategies() {
+    try {
+      allStrategies.value = await api.getAllStrategies()
+    } catch (e: any) {
+      error.value = e.message
+    }
+  }
+
+  async function mergeStrategies(sourceStrategies: string[], targetStrategy: string) {
+    try {
+      loading.value = true
+      const result = await api.mergeStrategies(sourceStrategies, targetStrategy)
+      // Refresh everything after merge
+      await loadFilterOptions()
+      await refreshAll()
+      await loadAllStrategies()
+      await loadMergeSuggestions()
+      return result
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function refreshAll() {
     await Promise.all([
       loadSummaryStats(),
@@ -229,6 +265,8 @@ export const useBetStore = defineStore('bet', () => {
     oddsBandsData,
     monthlyPLData,
     archivedStrategies,
+    mergeSuggestions,
+    allStrategies,
     loading,
     error,
     filters,
@@ -249,6 +287,9 @@ export const useBetStore = defineStore('bet', () => {
     loadArchivedStrategies,
     sanitizeStrategies,
     migrateDeletedToArchived,
+    loadMergeSuggestions,
+    loadAllStrategies,
+    mergeStrategies,
     refreshAll,
   }
 })

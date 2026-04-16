@@ -184,6 +184,41 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function updateProfile(data: { display_name?: string; email?: string }) {
+    loading.value = true
+    error.value = null
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/auth/update-profile`,
+        data,
+        { headers: { Authorization: `Bearer ${accessToken.value}` } },
+      )
+      if (res.data.user && user.value) {
+        user.value = { ...user.value, ...res.data.user }
+        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user.value))
+      }
+      return res.data
+    } catch (e) {
+      error.value = extractError(e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function openCustomerPortal(): Promise<string | null> {
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/stripe/customer-portal`,
+        {},
+        { headers: { Authorization: `Bearer ${accessToken.value}` } },
+      )
+      return res.data.url || null
+    } catch {
+      return null
+    }
+  }
+
   async function checkSubscription(): Promise<{ is_active: boolean; status: string }> {
     try {
       const res = await axios.get(`${API_BASE_URL}/stripe/subscription-status`, {
@@ -262,7 +297,9 @@ export const useAuthStore = defineStore('auth', () => {
     forgotPassword,
     resetPassword,
     changePassword,
+    updateProfile,
     checkSubscription,
+    openCustomerPortal,
     verifyPaymentSession,
     refreshUserProfile,
     logout,

@@ -6,14 +6,18 @@ Every query is scoped to the authenticated user's user_id.
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, Query, UploadFile, File, HTTPException, status
+from fastapi import FastAPI, Depends, Query, UploadFile, File, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uvicorn
 import asyncio
 import queue
@@ -23,6 +27,10 @@ import sys
 import os
 import tempfile
 import shutil
+import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -36,11 +44,13 @@ from api.auth import (
     create_access_token,
     create_refresh_token,
     create_password_reset_token,
+    sanitize_display_name,
     RegisterRequest,
     LoginRequest,
     ChangePasswordRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
+    UpdateProfileRequest,
     TokenResponse,
     RefreshRequest,
     SECRET_KEY,
@@ -100,6 +110,9 @@ async def lifespan(app):
             conn.execute(text("ALTER TABLE bets ADD COLUMN market_id VARCHAR"))
         if 'start_time' not in columns:
             conn.execute(text("ALTER TABLE bets ADD COLUMN start_time TIMESTAMP"))
+        if 'strategy_id' not in columns:
+            conn.execute(text("ALTER TABLE bets ADD COLUMN strategy_id VARCHAR"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bets_strategy_id ON bets (strategy_id)"))
 
         # ── User admin + subscription columns ──
         user_cols = [c['name'] for c in insp.get_columns('users')]
@@ -118,19 +131,101 @@ async def lifespan(app):
             conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_stripe_customer_id ON users (stripe_customer_id)"))
         if 'stripe_checkout_session_id' not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN stripe_checkout_session_id VARCHAR"))
+        if 'token_version' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0 NOT NULL"))
+        if 'failed_login_attempts' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0 NOT NULL"))
+        if 'locked_until' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN locked_until TIMESTAMP"))
+        if 'password_reset_token_id' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN password_reset_token_id VARCHAR"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_password_reset_token_id ON users (password_reset_token_id)"))
     yield
 
 
-app = FastAPI(title="BFBM Bet Explorer API", lifespan=lifespan)
+app = FastAPI(title="BFBM Bet Explorer API", lifespan=lifespan, docs_url=None, redoc_url=None)
 app.include_router(stripe_router)
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many requests. Please try again later."},
+    )
+
+cors_origins = os.getenv("CORS_ORIGINS", "").split(",")
+cors_origins = [o.strip() for o in cors_origins if o.strip()]
+if not cors_origins:
+    import warnings
+    warnings.warn("CORS_ORIGINS is not set! Defaulting to http://localhost:3080 only.")
+    cors_origins = ["http://localhost:3080"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Email helper (Resend)
+# ═══════════════════════════════════════════════════════════════════════════
+
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+SMTP_FROM = os.getenv("SMTP_FROM", "noreply@bfbmbetexplorer.com")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3080")
+
+
+def send_reset_email(to_email: str, token: str) -> bool:
+    """Send a password-reset email via the Resend API.
+
+    Returns True on success, False on failure (failures are logged but
+    never surfaced to the caller — the user always sees the same
+    "if an account exists…" message).
+    """
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not set — skipping password-reset email to %s", to_email)
+        return False
+
+    reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
+
+    try:
+        import resend
+        resend.api_key = RESEND_API_KEY
+
+        resend.Emails.send({
+            "from": SMTP_FROM,
+            "to": [to_email],
+            "subject": "BFBM Bet Explorer — Password Reset",
+            "html": (
+                f'<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">'
+                f'<h2 style="color:#0d9488">Password Reset</h2>'
+                f'<p>We received a request to reset your password. '
+                f'Click the button below to choose a new one:</p>'
+                f'<p style="text-align:center;margin:32px 0">'
+                f'<a href="{reset_url}" style="background:#0d9488;color:#fff;'
+                f'padding:12px 32px;border-radius:8px;text-decoration:none;'
+                f'font-weight:600;display:inline-block">Reset Password</a></p>'
+                f'<p style="color:#888;font-size:13px">This link expires in 1 hour. '
+                f'If you didn\'t request this, you can safely ignore this email.</p>'
+                f'<p style="color:#888;font-size:13px">'
+                f'Or copy this URL into your browser:<br/>'
+                f'<span style="word-break:break-all">{reset_url}</span></p>'
+                f'</div>'
+            ),
+        })
+        logger.info("Password-reset email sent to %s", to_email)
+        return True
+    except Exception:
+        logger.exception("Failed to send password-reset email to %s", to_email)
+        return False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -202,9 +297,11 @@ def apply_filters(query, filters: FilterParams, user_id: int):
     if filters.date_to:
         query = query.filter(Bet.settled_date <= datetime.fromisoformat(filters.date_to))
     if filters.selection_search:
-        query = query.filter(Bet.selection.ilike(f"%{filters.selection_search}%"))
+        safe_sel = filters.selection_search.replace("%", "\\%").replace("_", "\\_")
+        query = query.filter(Bet.selection.ilike(f"%{safe_sel}%", escape="\\"))
     if filters.description_search:
-        query = query.filter(Bet.description.ilike(f"%{filters.description_search}%"))
+        safe_desc = filters.description_search.replace("%", "\\%").replace("_", "\\_")
+        query = query.filter(Bet.description.ilike(f"%{safe_desc}%", escape="\\"))
     return query
 
 
@@ -257,7 +354,8 @@ def read_root():
 
 
 @app.post("/auth/register", response_model=TokenResponse)
-def register(req: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, req: RegisterRequest, db: Session = Depends(get_db)):
     """Register a new user account."""
     existing = db.query(User).filter(
         func.lower(User.email) == req.email.lower()
@@ -267,17 +365,21 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists",
         )
+    safe_display_name = sanitize_display_name(
+        req.display_name or req.email.split("@")[0]
+    )
     user = User(
         email=req.email.lower().strip(),
         password_hash=get_password_hash(req.password),
-        display_name=req.display_name or req.email.split("@")[0],
+        display_name=safe_display_name,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    access_token = create_access_token({"sub": str(user.id)})
-    refresh_token = create_refresh_token({"sub": str(user.id)})
+    tv = user.token_version if hasattr(user, 'token_version') else 0
+    access_token = create_access_token({"sub": str(user.id), "tv": tv or 0})
+    refresh_token = create_refresh_token({"sub": str(user.id), "tv": tv or 0})
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -286,13 +388,34 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/auth/login", response_model=TokenResponse)
-def login(req: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, req: LoginRequest, db: Session = Depends(get_db)):
     """Authenticate and receive JWT tokens."""
     user = db.query(User).filter(
         func.lower(User.email) == req.email.lower()
     ).first()
+
+    # Check account lockout
+    if user and hasattr(user, 'locked_until') and user.locked_until:
+        if user.locked_until > datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Account temporarily locked due to too many failed attempts. Try again later.",
+            )
+        else:
+            # Lockout expired — reset
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            db.commit()
+
     # Constant-time comparison — always hash even if user not found
     if not user or not verify_password(req.password, user.password_hash):
+        # Track failed attempts
+        if user and hasattr(user, 'failed_login_attempts'):
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+            if user.failed_login_attempts >= 5:
+                user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+            db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -303,8 +426,15 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
             detail="Account is deactivated",
         )
 
-    access_token = create_access_token({"sub": str(user.id)})
-    refresh_token = create_refresh_token({"sub": str(user.id)})
+    # Successful login — reset failed attempts
+    if hasattr(user, 'failed_login_attempts') and user.failed_login_attempts > 0:
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        db.commit()
+
+    tv = user.token_version if hasattr(user, 'token_version') else 0
+    access_token = create_access_token({"sub": str(user.id), "tv": tv or 0})
+    refresh_token = create_refresh_token({"sub": str(user.id), "tv": tv or 0})
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -329,8 +459,14 @@ def refresh_token(req: RefreshRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
-    access_token = create_access_token({"sub": str(user.id)})
-    new_refresh = create_refresh_token({"sub": str(user.id)})
+    # Verify token_version matches (reject tokens from before password change)
+    token_ver = payload.get("tv", 0)
+    if hasattr(user, 'token_version') and (user.token_version or 0) != token_ver:
+        raise HTTPException(status_code=401, detail="Token has been revoked")
+
+    tv = user.token_version if hasattr(user, 'token_version') else 0
+    access_token = create_access_token({"sub": str(user.id), "tv": tv or 0})
+    new_refresh = create_refresh_token({"sub": str(user.id), "tv": tv or 0})
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh,
@@ -357,16 +493,60 @@ def change_password(
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     user.password_hash = get_password_hash(req.new_password)
     user.updated_at = datetime.now(timezone.utc)
+    # Invalidate all existing JWT tokens
+    if hasattr(user, 'token_version'):
+        user.token_version = (user.token_version or 0) + 1
     db.commit()
     return {"ok": True, "message": "Password changed successfully"}
 
 
+@app.post("/auth/update-profile")
+def update_profile(
+    req: UpdateProfileRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update the authenticated user's profile (display name and/or email)."""
+    changed = False
+
+    if req.display_name is not None:
+        safe_name = sanitize_display_name(req.display_name.strip())
+        if not safe_name:
+            raise HTTPException(status_code=400, detail="Display name cannot be empty")
+        user.display_name = safe_name
+        changed = True
+
+    if req.email is not None:
+        new_email = req.email.lower().strip()
+        if new_email != user.email:
+            existing = db.query(User).filter(
+                func.lower(User.email) == new_email,
+                User.id != user.id,
+            ).first()
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="An account with this email already exists",
+                )
+            user.email = new_email
+            changed = True
+
+    if changed:
+        user.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(user)
+
+    return {"ok": True, "user": _user_dict(user)}
+
+
 @app.post("/auth/forgot-password")
-def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def forgot_password(request: Request, req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """Request a password-reset token.
 
-    In production, the token is emailed to the user.  Here it is returned
-    in the response for development convenience — wire up SMTP as needed.
+    The token is emailed to the user. A short token_id prefix is stored
+    alongside the bcrypt hash so we can look up the user in O(1) instead
+    of iterating all users.
     """
     user = db.query(User).filter(
         func.lower(User.email) == req.email.lower()
@@ -376,47 +556,52 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
     if not user:
         return {"ok": True, "message": "If an account with that email exists, a reset link has been sent."}
 
-    from datetime import timedelta
+    from datetime import timedelta as _td
     token = create_password_reset_token()
+    # Store a plaintext prefix (first 16 chars) for O(1) DB lookup
+    token_id = token[:16]
+    user.password_reset_token_id = token_id
     user.password_reset_token = get_password_hash(token)  # store hashed
-    user.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    user.password_reset_expires = datetime.now(timezone.utc) + _td(hours=1)
     db.commit()
 
-    # TODO: Send email with reset link containing `token`
-    # For now, return token in response (REMOVE IN PRODUCTION)
+    send_reset_email(user.email, token)
     return {
         "ok": True,
         "message": "If an account with that email exists, a reset link has been sent.",
-        "_dev_reset_token": token,  # REMOVE IN PRODUCTION
     }
 
 
 @app.post("/auth/reset-password")
-def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def reset_password(request: Request, req: ResetPasswordRequest, db: Session = Depends(get_db)):
     """Reset password using a valid reset token."""
-    # Find users with non-expired reset tokens
-    users_with_tokens = (
+    # Use the first 16 chars of the token as a lookup key
+    if len(req.token) < 16:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    token_id = req.token[:16]
+    target_user = (
         db.query(User)
         .filter(
+            User.password_reset_token_id == token_id,
             User.password_reset_token.isnot(None),
             User.password_reset_expires > datetime.now(timezone.utc),
         )
-        .all()
+        .first()
     )
 
-    target_user = None
-    for u in users_with_tokens:
-        if verify_password(req.token, u.password_reset_token):
-            target_user = u
-            break
-
-    if not target_user:
+    if not target_user or not verify_password(req.token, target_user.password_reset_token):
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
     target_user.password_hash = get_password_hash(req.new_password)
     target_user.password_reset_token = None
+    target_user.password_reset_token_id = None
     target_user.password_reset_expires = None
     target_user.updated_at = datetime.now(timezone.utc)
+    # Invalidate all existing JWT tokens
+    if hasattr(target_user, 'token_version'):
+        target_user.token_version = (target_user.token_version or 0) + 1
     db.commit()
     return {"ok": True, "message": "Password has been reset successfully"}
 
@@ -553,6 +738,145 @@ def sanitize_existing_strategies(
             fixed += 1
     db.commit()
     return {"ok": True, "rows_fixed": fixed}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Strategy merge endpoints
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/strategies/merge-suggestions")
+def get_merge_suggestions(
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Detect strategies that share the same BFBM StrategyID and suggest merges.
+
+    Only considers non-deleted, non-archived bets.  Groups strategies by
+    strategy_id where more than one distinct strategy name maps to the same ID.
+    """
+    base_filter = and_(
+        Bet.user_id == user.id,
+        Bet.is_deleted == False,   # noqa: E712
+        Bet.is_archived == False,  # noqa: E712
+        Bet.strategy.isnot(None),
+        Bet.strategy_id.isnot(None),
+    )
+
+    # Get all (strategy_id, strategy_name) pairs with bet counts
+    rows = (
+        db.query(
+            Bet.strategy_id,
+            Bet.strategy,
+            func.count(Bet.id).label("num_bets"),
+            func.min(Bet.settled_date).label("first_bet"),
+            func.max(Bet.settled_date).label("last_bet"),
+        )
+        .filter(base_filter)
+        .group_by(Bet.strategy_id, Bet.strategy)
+        .all()
+    )
+
+    # Group by strategy_id → only include IDs that map to multiple names
+    from collections import defaultdict
+    groups: dict[str, list] = defaultdict(list)
+    for row in rows:
+        groups[row.strategy_id].append({
+            "strategy": row.strategy,
+            "num_bets": row.num_bets,
+            "first_bet": row.first_bet.isoformat() if row.first_bet else None,
+            "last_bet": row.last_bet.isoformat() if row.last_bet else None,
+        })
+
+    suggestions = []
+    for sid, members in groups.items():
+        if len(members) > 1:
+            suggestions.append({
+                "strategy_id": sid,
+                "strategies": sorted(members, key=lambda m: m["num_bets"], reverse=True),
+            })
+
+    return sorted(suggestions, key=lambda s: sum(m["num_bets"] for m in s["strategies"]), reverse=True)
+
+
+class MergeStrategiesRequest(BaseModel):
+    source_strategies: List[str]
+    target_strategy: str
+
+
+@app.post("/strategies/merge")
+def merge_strategies(
+    req: MergeStrategiesRequest,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Merge one or more strategy names into a target name.
+
+    All bets with a strategy in source_strategies (that belong to the
+    authenticated user and are not deleted) will have their strategy
+    renamed to target_strategy.
+    """
+    if not req.source_strategies:
+        raise HTTPException(status_code=400, detail="No source strategies provided")
+    if not req.target_strategy or not req.target_strategy.strip():
+        raise HTTPException(status_code=400, detail="Target strategy name is required")
+
+    target = req.target_strategy.strip()
+
+    # Don't rename strategies that are already the target
+    sources = [s for s in req.source_strategies if s != target]
+    if not sources:
+        return {"ok": True, "merged_bets": 0, "target_strategy": target}
+
+    count = (
+        db.query(Bet)
+        .filter(
+            Bet.user_id == user.id,
+            Bet.strategy.in_(sources),
+            Bet.is_deleted == False,  # noqa: E712
+        )
+        .update({Bet.strategy: target}, synchronize_session='fetch')
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "merged_bets": count,
+        "source_strategies": sources,
+        "target_strategy": target,
+    }
+
+
+@app.get("/strategies/all")
+def get_all_strategies(
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Return all strategy names with bet counts (non-deleted only)."""
+    rows = (
+        db.query(
+            Bet.strategy,
+            func.count(Bet.id).label("num_bets"),
+            func.sum(Bet.profit_loss).label("total_pl"),
+            func.min(Bet.settled_date).label("first_bet"),
+            func.max(Bet.settled_date).label("last_bet"),
+        )
+        .filter(
+            Bet.user_id == user.id,
+            Bet.is_deleted == False,  # noqa: E712
+            Bet.strategy.isnot(None),
+        )
+        .group_by(Bet.strategy)
+        .all()
+    )
+    return [
+        {
+            "strategy": row.strategy,
+            "num_bets": row.num_bets,
+            "total_pl": round(float(row.total_pl or 0), 2),
+            "first_bet": row.first_bet.isoformat() if row.first_bet else None,
+            "last_bet": row.last_bet.isoformat() if row.last_bet else None,
+        }
+        for row in sorted(rows, key=lambda r: r.strategy or "")
+    ]
 
 
 @app.post("/migrate-deleted-to-archived")
@@ -1168,6 +1492,13 @@ async def ingest_csv(
     if not file.filename or not file.filename.lower().endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a .csv")
 
+    # Validate content type
+    if file.content_type and file.content_type not in (
+        'text/csv', 'application/vnd.ms-excel', 'application/octet-stream',
+        'text/plain',
+    ):
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a CSV file.")
+
     # Limit file size to 50 MB
     contents = await file.read()
     if len(contents) > 50 * 1024 * 1024:
@@ -1182,6 +1513,9 @@ async def ingest_csv(
         test_df = read_csv(tmp_path)
         _, _ = normalize_columns(test_df)
         total_rows = len(test_df)
+        if total_rows > 500_000:
+            os.unlink(tmp_path)
+            raise HTTPException(status_code=400, detail="CSV too large (max 500,000 rows)")
         del test_df
     except ValueError as e:
         os.unlink(tmp_path)

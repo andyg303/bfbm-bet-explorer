@@ -13,18 +13,21 @@ import SummaryHeader from './components/SummaryHeader.vue'
 import IngestData from './components/IngestData.vue'
 import MonthlyPLTable from './components/MonthlyPLTable.vue'
 import ArchivedStrategies from './components/ArchivedStrategies.vue'
+import StrategyManager from './components/StrategyManager.vue'
 import AuthPage from './components/AuthPage.vue'
 import LandingPage from './components/LandingPage.vue'
 import PricingPage from './components/PricingPage.vue'
+import AccountSettings from './components/AccountSettings.vue'
 
 const betStore = useBetStore()
 const auth = useAuthStore()
 const { isDark, toggle: toggleDark } = useDarkMode()
 
 // ─── Page routing (SPA-style with real URLs) ────────────────────────────────
-type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard'
+type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard' | 'forgot-password' | 'reset-password' | 'account'
 const currentPage = ref<AppPage>('landing')
-const authInitialMode = ref<'login' | 'register'>('login')
+const authInitialMode = ref<'login' | 'register' | 'forgot' | 'reset'>('login')
+const resetTokenFromUrl = ref('')
 
 // URL ↔ page mapping
 const PAGE_PATHS: Record<AppPage, string> = {
@@ -33,6 +36,9 @@ const PAGE_PATHS: Record<AppPage, string> = {
   register: '/register',
   pricing: '/pricing',
   dashboard: '/dashboard',
+  'forgot-password': '/forgot-password',
+  'reset-password': '/reset-password',
+  account: '/account',
 }
 
 function pageFromPath(path: string): AppPage {
@@ -52,6 +58,23 @@ function determineInitialPage(): AppPage {
   }
   // Respect the current URL path first
   const urlPage = pageFromPath(window.location.pathname)
+
+  // Handle password reset link from email
+  if (urlPage === 'reset-password') {
+    const token = params.get('token')
+    if (token) resetTokenFromUrl.value = token
+    authInitialMode.value = 'reset'
+    return 'reset-password'
+  }
+  if (urlPage === 'forgot-password') {
+    authInitialMode.value = 'forgot'
+    return 'forgot-password'
+  }
+  // Guard: account page requires auth
+  if (urlPage === 'account') {
+    if (!auth.isAuthenticated) return 'login'
+    return 'account'
+  }
   // Guard: dashboard requires auth + subscription
   if (urlPage === 'dashboard') {
     if (!auth.isAuthenticated) return 'login'
@@ -68,7 +91,13 @@ function determineInitialPage(): AppPage {
 function navigateTo(page: string, replace = false) {
   if (page === 'login' || page === 'register') {
     authInitialMode.value = page as 'login' | 'register'
-    currentPage.value = page === 'register' ? 'register' : 'login'
+    currentPage.value = page as AppPage
+  } else if (page === 'forgot-password') {
+    authInitialMode.value = 'forgot'
+    currentPage.value = 'forgot-password'
+  } else if (page === 'reset-password') {
+    authInitialMode.value = 'reset'
+    currentPage.value = 'reset-password'
   } else {
     currentPage.value = page as AppPage
   }
@@ -89,6 +118,10 @@ function handlePopState(e: PopStateEvent) {
   const page = e.state?.page || pageFromPath(window.location.pathname)
   if (page === 'login' || page === 'register') {
     authInitialMode.value = page as 'login' | 'register'
+  } else if (page === 'forgot-password') {
+    authInitialMode.value = 'forgot'
+  } else if (page === 'reset-password') {
+    authInitialMode.value = 'reset'
   }
   currentPage.value = page as AppPage
 }
@@ -99,7 +132,7 @@ const showDashboard = computed(() =>
 )
 
 // ─── Dashboard state ─────────────────────────────────────────────────────────
-const activeTab = ref<'dashboard' | 'archive'>('dashboard')
+const activeTab = ref<'dashboard' | 'archive' | 'strategies'>('dashboard')
 const sidebarOpen = ref(false)
 const showScrollTop = ref(false)
 const showUserMenu = ref(false)
@@ -165,6 +198,8 @@ async function loadDashboardData() {
   await betStore.loadSummaryStats()
   await betStore.refreshAll()
   await betStore.loadArchivedStrategies()
+  // Load merge suggestions in the background for the badge count
+  betStore.loadMergeSuggestions()
 }
 
 onMounted(async () => {
@@ -238,16 +273,23 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
     @navigate="navigateTo"
   />
 
-  <!-- ═══════ Auth pages (login / register) ═══════ -->
+  <!-- ═══════ Auth pages (login / register / forgot / reset) ═══════ -->
   <AuthPage
-    v-else-if="currentPage === 'login' || currentPage === 'register'"
+    v-else-if="currentPage === 'login' || currentPage === 'register' || currentPage === 'forgot-password' || currentPage === 'reset-password'"
     :initial-mode="authInitialMode"
+    :initial-token="resetTokenFromUrl"
     @navigate="navigateTo"
   />
 
   <!-- ═══════ Pricing page ═══════ -->
   <PricingPage
     v-else-if="currentPage === 'pricing'"
+    @navigate="navigateTo"
+  />
+
+  <!-- ═══════ Account Settings ═══════ -->
+  <AccountSettings
+    v-else-if="currentPage === 'account'"
     @navigate="navigateTo"
   />  <!-- ═══════ Dashboard (authenticated + active subscription) ═══════ -->
   <div v-else-if="showDashboard" class="min-h-screen bg-gray-50 dark:bg-[#0b0f1a] text-gray-800 dark:text-gray-200 transition-colors duration-200">
@@ -280,6 +322,13 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
               <span class="flex items-center gap-1.5">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
                 Dashboard
+              </span>
+            </button>
+            <button @click="activeTab = 'strategies'" :class="activeTab === 'strategies' ? 'active' : ''">
+              <span class="flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                Strategies
+                <span v-if="betStore.mergeSuggestions.length > 0" class="ml-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold leading-none rounded-full bg-amber-500/20 text-amber-400">{{ betStore.mergeSuggestions.length }}</span>
               </span>
             </button>
             <button @click="activeTab = 'archive'" :class="activeTab === 'archive' ? 'active' : ''">
@@ -323,6 +372,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
                     </div>
                   </div>
                   <div class="py-1">
+                    <button @click="navigateTo('account'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                      Account Settings
+                    </button>
                     <button @click="showChangePassword = true; showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                       Change Password
@@ -343,6 +396,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
       <div class="sm:hidden border-t border-gray-200 dark:border-gray-800/40 px-4 py-2">
         <div class="pill-nav w-full">
           <button @click="activeTab = 'dashboard'" :class="[activeTab === 'dashboard' ? 'active' : '', 'flex-1']">Dashboard</button>
+          <button @click="activeTab = 'strategies'" :class="[activeTab === 'strategies' ? 'active' : '', 'flex-1']">
+            Strategies
+            <span v-if="betStore.mergeSuggestions.length > 0" class="ml-1 text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">{{ betStore.mergeSuggestions.length }}</span>
+          </button>
           <button @click="activeTab = 'archive'" :class="[activeTab === 'archive' ? 'active' : '', 'flex-1']">
             Archive
             <span v-if="archivedCount > 0" class="ml-1 text-[10px] bg-teal-500/20 text-teal-400 px-1.5 py-0.5 rounded-full">{{ archivedCount }}</span>
@@ -373,6 +430,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
             <BetTable />
           </div>
         </div>
+      </div>
+
+      <div v-else-if="activeTab === 'strategies'" class="px-4 py-6 sm:px-6">
+        <StrategyManager />
       </div>
 
       <div v-else-if="activeTab === 'archive'" class="px-4 py-6 sm:px-6">

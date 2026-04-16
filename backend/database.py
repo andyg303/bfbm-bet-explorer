@@ -3,11 +3,15 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from dotenv import load_dotenv
 from datetime import datetime, timezone
+from urllib.parse import quote_plus
 import os
 
 load_dotenv()
 
-DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+DATABASE_URL = (
+    f"postgresql://{os.getenv('DB_USER')}:{quote_plus(os.getenv('DB_PASSWORD', ''))}"
+    f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+)
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -27,7 +31,11 @@ class User(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
     password_reset_token = Column(String, nullable=True, index=True)
+    password_reset_token_id = Column(String, nullable=True, index=True)  # plaintext prefix for O(1) lookup
     password_reset_expires = Column(DateTime, nullable=True)
+    token_version = Column(Integer, default=0, nullable=False)  # increment to invalidate all JWTs
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    locked_until = Column(DateTime, nullable=True)
 
     # Subscription / Stripe
     subscription_status = Column(String, default="inactive", nullable=False)  # inactive | active | cancelled | expired
@@ -60,6 +68,7 @@ class Bet(Base):
     status = Column(String, index=True)
     profit_loss = Column(Float, index=True)
     strategy = Column(String, index=True)
+    strategy_id = Column(String, nullable=True, index=True)
     bsp = Column(Float)
     total_matched_on_runner = Column(Float)
     total_matched_on_market = Column(Float)

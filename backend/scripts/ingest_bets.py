@@ -97,8 +97,8 @@ COLUMN_MAP = {
     'competition id':             None,
     'event type id':              None,
     'eventtypeid':                None,
-    'strategy id':                None,
-    'strategyid':                 None,
+    'strategy id':                'strategy_id',
+    'strategyid':                 'strategy_id',
     'strategy selection id':      None,
     'strategyselectionid':        None,
 
@@ -553,6 +553,7 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None, progress_ca
             strategy = safe_get(row, 'strategy')
             strategy = sanitize_strategy_name(strategy) if strategy else None
 
+            strategy_id     = str(safe_get(row, 'strategy_id'))   if safe_get(row, 'strategy_id') else None
             description     = str(safe_get(row, 'description'))   if safe_get(row, 'description') else None
             selection       = str(safe_get(row, 'selection'))     if safe_get(row, 'selection') else None
             country_code    = str(safe_get(row, 'country_code'))  if safe_get(row, 'country_code') else None
@@ -586,6 +587,7 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None, progress_ca
                 'status':                 status,
                 'profit_loss':            profit_loss_with_commission,
                 'strategy':               strategy,
+                'strategy_id':            strategy_id,
                 'bsp':                    bsp_val,
                 'total_matched_on_runner': total_runner,
                 'total_matched_on_market': total_market,

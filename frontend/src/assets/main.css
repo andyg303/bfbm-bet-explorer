@@ -171,6 +171,7 @@
     background: linear-gradient(135deg, #14b8a6, #0ea5e9);
     color: white;
     box-shadow: 0 4px 16px -4px rgba(20, 184, 166, 0.4);
+    z-index: 0;
   }
 
   .btn-glow:hover {
@@ -182,6 +183,7 @@
     content: '';
     @apply absolute inset-0 opacity-0 transition-opacity duration-300;
     background: linear-gradient(135deg, #0ea5e9, #14b8a6);
+    z-index: -1;
   }
 
   .btn-glow:hover::before {

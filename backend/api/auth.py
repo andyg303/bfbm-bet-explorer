@@ -70,6 +70,20 @@ def create_access_token(
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def sanitize_display_name(name: str) -> str:
+    """Strip HTML tags and dangerous characters from display names."""
+    if not name:
+        return name
+    # Remove HTML tags
+    cleaned = re.sub(r'<[^>]+>', '', name)
+    # Remove control characters
+    cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', cleaned)
+    # Collapse whitespace
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    # Cap length
+    return cleaned[:100]
+
+
 def create_refresh_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
@@ -101,6 +115,7 @@ async def get_current_user(
         if sub is None or token_type != "access":
             raise credentials_exception
         user_id = int(sub)
+        token_ver = payload.get("tv", 0)
     except (JWTError, ValueError, TypeError):
         raise credentials_exception
 
@@ -110,6 +125,9 @@ async def get_current_user(
         .first()
     )
     if user is None:
+        raise credentials_exception
+    # Reject tokens issued before a password change / forced logout
+    if hasattr(user, 'token_version') and (user.token_version or 0) != token_ver:
         raise credentials_exception
     return user
 
@@ -127,6 +145,8 @@ class RegisterRequest(BaseModel):
     def validate_password(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
+        if len(v) > 128:
+            raise ValueError("Password must be at most 128 characters")
         if not re.search(r"[A-Z]", v):
             raise ValueError("Password must contain at least one uppercase letter")
         if not re.search(r"[a-z]", v):
@@ -150,6 +170,8 @@ class ChangePasswordRequest(BaseModel):
     def validate_password(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
+        if len(v) > 128:
+            raise ValueError("Password must be at most 128 characters")
         if not re.search(r"[A-Z]", v):
             raise ValueError("Password must contain at least one uppercase letter")
         if not re.search(r"[a-z]", v):
@@ -172,6 +194,8 @@ class ResetPasswordRequest(BaseModel):
     def validate_password(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
+        if len(v) > 128:
+            raise ValueError("Password must be at most 128 characters")
         if not re.search(r"[A-Z]", v):
             raise ValueError("Password must contain at least one uppercase letter")
         if not re.search(r"[a-z]", v):
@@ -179,6 +203,11 @@ class ResetPasswordRequest(BaseModel):
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one digit")
         return v
+
+
+class UpdateProfileRequest(BaseModel):
+    display_name: Optional[str] = None
+    email: Optional[EmailStr] = None
 
 
 class TokenResponse(BaseModel):

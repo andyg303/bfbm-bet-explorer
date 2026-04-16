@@ -112,8 +112,40 @@ def create_checkout_session(
 
 
 # ---------------------------------------------------------------------------
+# Customer Portal — self-service subscription management
+# ---------------------------------------------------------------------------
+@router.post("/customer-portal")
+def create_customer_portal_session(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a Stripe Customer Portal session.
+
+    Lets users cancel, change plan, update payment method, and view invoices
+    without you having to build any of that UI yourself.
+    """
+    if not user.stripe_customer_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No billing account found. Please subscribe first.",
+        )
+
+    portal_session = stripe.billing_portal.Session.create(
+        customer=user.stripe_customer_id,
+        return_url=f"{FRONTEND_URL}/account",
+    )
+    return {"url": portal_session.url}
+
+
+# ---------------------------------------------------------------------------
 # Webhook — Stripe calls this to confirm payment
 # ---------------------------------------------------------------------------
+# In-memory set of processed event IDs to prevent replay attacks.
+# In a multi-process deployment, replace with a DB table or Redis set.
+_processed_event_ids: set[str] = set()
+_MAX_PROCESSED_EVENTS = 10_000  # cap memory usage
+
+
 @router.post("/webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     """
@@ -130,9 +162,32 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     except stripe.error.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        _activate_subscription(session, db)
+    # Idempotency: skip events we've already processed
+    event_id = event.get("id")
+    if event_id in _processed_event_ids:
+        return {"ok": True, "note": "already processed"}
+    # Cap memory — evict oldest entries when set grows too large
+    if len(_processed_event_ids) >= _MAX_PROCESSED_EVENTS:
+        _processed_event_ids.clear()
+    _processed_event_ids.add(event_id)
+
+    event_type = event["type"]
+    obj = event["data"]["object"]
+
+    if event_type == "checkout.session.completed":
+        _activate_subscription(obj, db)
+
+    elif event_type == "customer.subscription.deleted":
+        # User cancelled (or Stripe cancelled after failed payments)
+        _handle_subscription_cancelled(obj, db)
+
+    elif event_type == "customer.subscription.updated":
+        # Plan change, renewal, or status change
+        _handle_subscription_updated(obj, db)
+
+    elif event_type == "invoice.payment_failed":
+        # Payment failed — mark as past_due so we can warn the user
+        _handle_payment_failed(obj, db)
 
     return {"ok": True}
 
@@ -172,6 +227,65 @@ def _activate_subscription(session: dict, db: Session):
     user.subscription_expires = base + relativedelta(months=plan["months"])
     user.stripe_customer_id = session.get("customer", user.stripe_customer_id)
     db.commit()
+
+
+def _find_user_by_customer_id(customer_id: str, db: Session) -> User | None:
+    """Look up a user by their Stripe customer ID."""
+    if not customer_id:
+        return None
+    return db.query(User).filter(User.stripe_customer_id == customer_id).first()
+
+
+def _handle_subscription_cancelled(subscription: dict, db: Session):
+    """Mark user as cancelled when their Stripe subscription ends."""
+    customer_id = subscription.get("customer")
+    user = _find_user_by_customer_id(customer_id, db)
+    if not user:
+        return
+    user.subscription_status = "cancelled"
+    db.commit()
+
+
+def _handle_subscription_updated(subscription: dict, db: Session):
+    """Sync subscription status when Stripe sends an update.
+
+    Covers plan changes, renewals, and status transitions.
+    """
+    customer_id = subscription.get("customer")
+    user = _find_user_by_customer_id(customer_id, db)
+    if not user:
+        return
+
+    stripe_status = subscription.get("status")  # active, past_due, canceled, etc.
+
+    if stripe_status == "active":
+        user.subscription_status = "active"
+        # Update expiry from Stripe's current_period_end
+        period_end = subscription.get("current_period_end")
+        if period_end:
+            user.subscription_expires = datetime.fromtimestamp(period_end, tz=timezone.utc)
+    elif stripe_status in ("canceled", "unpaid"):
+        user.subscription_status = "cancelled"
+    elif stripe_status == "past_due":
+        # Keep active for now but could warn the user
+        user.subscription_status = "active"
+
+    db.commit()
+
+
+def _handle_payment_failed(invoice: dict, db: Session):
+    """Log payment failure — Stripe retries automatically."""
+    customer_id = invoice.get("customer")
+    user = _find_user_by_customer_id(customer_id, db)
+    if not user:
+        return
+    # Stripe retries failed payments automatically.
+    # After all retries fail, it fires customer.subscription.deleted.
+    # For now we just keep the user active and let Stripe handle retries.
+    import logging
+    logging.getLogger(__name__).warning(
+        "Payment failed for user %s (customer %s)", user.id, customer_id
+    )
 
 
 # ---------------------------------------------------------------------------

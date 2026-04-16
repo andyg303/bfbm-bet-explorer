@@ -388,3 +388,46 @@ export const migrateDeletedToArchived = async (): Promise<{
   const response = await api.post('/migrate-deleted-to-archived')
   return response.data
 }
+
+// ─── Strategy merge types & API functions ────────────────────────────────────
+
+export interface StrategyInfo {
+  strategy: string
+  num_bets: number
+  total_pl: number
+  first_bet: string | null
+  last_bet: string | null
+}
+
+export interface MergeSuggestionMember {
+  strategy: string
+  num_bets: number
+  first_bet: string | null
+  last_bet: string | null
+}
+
+export interface MergeSuggestion {
+  strategy_id: string
+  strategies: MergeSuggestionMember[]
+}
+
+export const getMergeSuggestions = async (): Promise<MergeSuggestion[]> => {
+  const response = await api.get('/strategies/merge-suggestions')
+  return response.data
+}
+
+export const mergeStrategies = async (
+  sourceStrategies: string[],
+  targetStrategy: string,
+): Promise<{ ok: boolean; merged_bets: number; target_strategy: string }> => {
+  const response = await api.post('/strategies/merge', {
+    source_strategies: sourceStrategies,
+    target_strategy: targetStrategy,
+  })
+  return response.data
+}
+
+export const getAllStrategies = async (): Promise<StrategyInfo[]> => {
+  const response = await api.get('/strategies/all')
+  return response.data
+}

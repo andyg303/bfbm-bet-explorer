@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useAuthStore } from '../stores/authStore'
 
 const auth = useAuthStore()
 
 const props = defineProps<{
   initialMode?: 'login' | 'register' | 'forgot' | 'reset'
+  initialToken?: string
 }>()
 
 const emit = defineEmits<{
-  (e: 'navigate', page: 'landing' | 'pricing' | 'login' | 'register'): void
+  (e: 'navigate', page: 'landing' | 'pricing' | 'login' | 'register' | 'forgot-password' | 'reset-password'): void
 }>()
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset'
@@ -32,6 +33,19 @@ const newPassword = ref('')
 const showPassword = ref(false)
 const successMessage = ref('')
 const localError = ref('')
+
+// Auto-populate token from URL or prop
+onMounted(() => {
+  if (props.initialToken) {
+    resetToken.value = props.initialToken
+  }
+  // Also check URL params as fallback
+  const params = new URLSearchParams(window.location.search)
+  const urlToken = params.get('token')
+  if (urlToken && !resetToken.value) {
+    resetToken.value = urlToken
+  }
+})
 
 const isValid = computed(() => {
   if (mode.value === 'login') return email.value.length > 0 && password.value.length >= 8
@@ -76,9 +90,13 @@ function clearForm() {
 function switchMode(m: AuthMode) {
   clearForm()
   mode.value = m
-  // Emit navigate for login/register so the URL updates
+  // Emit navigate so the URL updates
   if (m === 'login' || m === 'register') {
     emit('navigate', m)
+  } else if (m === 'forgot') {
+    emit('navigate', 'forgot-password')
+  } else if (m === 'reset') {
+    emit('navigate', 'reset-password')
   }
 }
 
