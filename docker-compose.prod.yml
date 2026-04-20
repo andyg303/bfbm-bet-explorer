@@ -1,18 +1,48 @@
-## Production overrides — use on the server with:
-##   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
-##
-## Binds ports to 127.0.0.1 only so they're only accessible via the host nginx reverse proxy.
+## PRODUCTION — run with: docker compose -f docker-compose.prod.yml up --build -d
 services:
   db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-bfbm_bets}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5432:5432"  # Localhost only — access via SSH tunnel
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-bfbm_bets}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
+    build: ./backend
+    restart: unless-stopped
     ports:
-      !override
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8000:8000"  # Localhost only — behind nginx reverse proxy
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
 
   frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: "/api"
+    restart: unless-stopped
     ports:
-      !override
-      - "127.0.0.1:3080:80"
+      - "127.0.0.1:3080:80"  # Localhost only — behind nginx reverse proxy
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
