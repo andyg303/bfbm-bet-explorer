@@ -118,13 +118,13 @@ function createProfitChart() {
             font: { size: 10 },
             callback: function (value) {
               const v = Number(value)
-              if ([2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 50, 70, 100, 150, 200, 300, 400].includes(v)) return v.toFixed(1)
+              if ([1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 50, 70, 100, 150, 200, 300, 400].includes(v)) return v.toFixed(1)
               return ''
             },
             autoSkip: false,
             maxRotation: 0,
           },
-          min: 2,
+          min: 1,
         },
         y: {
           grid: { color: gridColor },
@@ -217,13 +217,13 @@ function createRoiChart() {
             font: { size: 10 },
             callback: function (value) {
               const v = Number(value)
-              if ([2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 50, 70, 100, 150, 200, 300, 400].includes(v)) return v.toFixed(1)
+              if ([1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 50, 70, 100, 150, 200, 300, 400].includes(v)) return v.toFixed(1)
               return ''
             },
             autoSkip: false,
             maxRotation: 0,
           },
-          min: 2,
+          min: 1,
         },
         y: {
           grid: { color: gridColor },
