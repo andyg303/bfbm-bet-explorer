@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { uploadBetsCSV, type IngestProgressEvent } from '../services/api'
 import { useBetStore } from '../stores/betStore'
 
@@ -18,6 +18,53 @@ const result = ref<{ filename: string; inserted: number; updated: number; skippe
 const phaseLabel = ref('Preparing data…')
 const errorMessage = ref('')
 const showHelp = ref(false)
+
+const funnyPhrases = [
+  'This may take a while… time for a brew? ☕',
+  'Crunching numbers like a bookie on Grand National day… 🏇',
+  'Teaching the hamsters to run faster… 🐹',
+  'Consulting the racing oracle… 🔮',
+  'Counting every penny so you don\'t have to… 💰',
+  'Warming up the spreadsheet engine… 📊',
+  'Saddling up your data… 🐎',
+  'Checking under the sofa for missing bets… 🛋️',
+  'Your bets are in another castle… almost there! 🏰',
+  'Hang tight, we\'re faster than a steward\'s inquiry… ⚖️',
+  'Loading… still quicker than waiting for a photo finish 📸',
+  'If only the horses ran this fast… 🐴',
+  'Hold your horses… literally 🐴',
+  'Making sure none of your winners got away… 🏆',
+  'Did you remember to back the favourite? 🤔',
+  'Processing faster than you can say "each way"… 🎯',
+  'Almost done… unlike your accumulator 😅',
+  'Turning CSV chaos into beautiful data… ✨',
+  'Bet you didn\'t expect it to take this long… 😏',
+]
+const funnyMessage = ref('')
+let funnyInterval: ReturnType<typeof setInterval> | null = null
+
+function pickPhrase() {
+  return funnyPhrases[Math.floor(Math.random() * funnyPhrases.length)] ?? ''
+}
+
+function startFunnyMessages() {
+  funnyMessage.value = pickPhrase()
+  funnyInterval = setInterval(() => {
+    funnyMessage.value = pickPhrase()
+  }, 10000)
+}
+
+function stopFunnyMessages() {
+  if (funnyInterval) { clearInterval(funnyInterval); funnyInterval = null }
+  funnyMessage.value = ''
+}
+
+watch(status, (val) => {
+  if (val === 'processing' || val === 'sending') startFunnyMessages()
+  else stopFunnyMessages()
+})
+
+onUnmounted(() => stopFunnyMessages())
 
 function openFilePicker() {
   fileInput.value?.click()
@@ -267,6 +314,7 @@ function close() {
           <span class="text-sky-400">{{ updatedCount.toLocaleString() }} updated</span>
           <span class="text-gray-400">{{ skippedCount.toLocaleString() }} skipped</span>
         </div>
+        <p v-if="funnyMessage" class="mt-2 text-[11px] text-gray-400 italic text-center transition-opacity duration-500">{{ funnyMessage }}</p>
       </div>
 
       <!-- Success result -->
