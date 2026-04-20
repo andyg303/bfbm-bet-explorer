@@ -358,11 +358,15 @@ async def require_active_subscription(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Active subscription required. Please subscribe to access this feature.",
         )
-    if user.subscription_expires and user.subscription_expires <= datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your subscription has expired. Please renew to continue.",
-        )
+    if user.subscription_expires:
+        expires = user.subscription_expires
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires <= datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your subscription has expired. Please renew to continue.",
+            )
     return user
 
 
