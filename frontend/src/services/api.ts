@@ -185,6 +185,14 @@ export interface OddsBandProfit {
   roi: number
 }
 
+export interface OddsCurvePoint {
+  odds: number
+  cum_pl: number
+  cum_ev: number
+  roi_pl: number
+  roi_ev: number
+}
+
 export interface MonthlyPLRow {
   year: number
   [month: string]: number | null
@@ -220,8 +228,8 @@ export const getStrategyStats = async (filters: FilterParams): Promise<StrategyS
   return response.data
 }
 
-export const getBets = async (filters: FilterParams, skip: number = 0, limit: number = 100) => {
-  const response = await api.post(`/bets?skip=${skip}&limit=${limit}`, filters)
+export const getBets = async (filters: FilterParams, skip: number = 0, limit: number = 100, sortBy: string = 'settled_date', sortDir: string = 'desc') => {
+  const response = await api.post(`/bets?skip=${skip}&limit=${limit}&sort_by=${sortBy}&sort_dir=${sortDir}`, filters)
   return response.data
 }
 
@@ -242,6 +250,11 @@ export const getSummaryStats = async (filters: FilterParams) => {
 
 export const getOddsBandsProfit = async (filters: FilterParams): Promise<OddsBandProfit[]> => {
   const response = await api.post('/odds-bands-profit', filters)
+  return response.data
+}
+
+export const getProfitCurveByOdds = async (filters: FilterParams): Promise<OddsCurvePoint[]> => {
+  const response = await api.post('/profit-curve-by-odds', filters)
   return response.data
 }
 

@@ -16,56 +16,11 @@ const isCustomStaking = computed(() => betStore.stakingParams.staking_type !== '
 
 const isDedup = computed(() => isCustomStaking.value && betStore.stakingParams.deduplicate)
 
-const bets = computed(() => {
-  const data = betStore.bets || []
-  if (!data.length) return data
-  
-  const sorted = [...data].sort((a, b) => {
-    let aVal = a[sortKey.value]
-    let bVal = b[sortKey.value]
-    
-    // Use recalculated values when custom staking is applied
-    if (isCustomStaking.value) {
-      if (sortKey.value === 'matched_amount' && a.recalculated_stake !== undefined) {
-        aVal = a.recalculated_stake
-      }
-      if (sortKey.value === 'matched_amount' && b.recalculated_stake !== undefined) {
-        bVal = b.recalculated_stake
-      }
-      if (sortKey.value === 'profit_loss' && a.recalculated_pl !== undefined) {
-        aVal = a.recalculated_pl
-      }
-      if (sortKey.value === 'profit_loss' && b.recalculated_pl !== undefined) {
-        bVal = b.recalculated_pl
-      }
-      if (sortKey.value === 'lay_liability' && a.recalculated_liability !== undefined) {
-        aVal = a.recalculated_liability
-      }
-      if (sortKey.value === 'lay_liability' && b.recalculated_liability !== undefined) {
-        bVal = b.recalculated_liability
-      }
-    }
-    
-    // Handle null/undefined
-    if (aVal == null && bVal == null) return 0
-    if (aVal == null) return 1
-    if (bVal == null) return -1
-    
-    // Handle string comparison
-    if (typeof aVal === 'string' && typeof bVal === 'string') {
-      return sortDirection.value === 'asc' 
-        ? aVal.localeCompare(bVal)
-        : bVal.localeCompare(aVal)
-    }
-    
-    // Handle numeric comparison
-    const aNum = Number(aVal) || 0
-    const bNum = Number(bVal) || 0
-    return sortDirection.value === 'asc' ? aNum - bNum : bNum - aNum
-  })
-  
-  return sorted
-})
+const bets = computed(() => betStore.bets || [])
+
+function reloadBets() {
+  betStore.loadBets(currentPage.value * pageSize.value, pageSize.value, sortKey.value, sortDirection.value)
+}
 
 const totalBets = computed(() => betStore.totalBets)
 const totalPages = computed(() => Math.ceil(totalBets.value / pageSize.value))
@@ -77,19 +32,21 @@ function sort(key: SortableKey) {
     sortKey.value = key
     sortDirection.value = 'desc'
   }
+  currentPage.value = 0
+  reloadBets()
 }
 
 function nextPage() {
   if (currentPage.value < totalPages.value - 1) {
     currentPage.value++
-    betStore.loadBets(currentPage.value * pageSize.value, pageSize.value)
+    reloadBets()
   }
 }
 
 function prevPage() {
   if (currentPage.value > 0) {
     currentPage.value--
-    betStore.loadBets(currentPage.value * pageSize.value, pageSize.value)
+    reloadBets()
   }
 }
 
@@ -121,7 +78,7 @@ function formatEventName(description: string | null | undefined) {
 function changePageSize(newSize: number) {
   pageSize.value = newSize
   currentPage.value = 0
-  betStore.loadBets(0, newSize)
+  reloadBets()
 }
 
 async function generateCSVContent() {

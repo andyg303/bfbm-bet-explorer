@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit, MonthlyPLResponse, ArchivedStrategy, MergeSuggestion, StrategyInfo } from '../services/api'
+import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit, OddsCurvePoint, MonthlyPLResponse, ArchivedStrategy, MergeSuggestion, StrategyInfo } from '../services/api'
 import * as api from '../services/api'
 
 export const useBetStore = defineStore('bet', () => {
@@ -11,6 +11,7 @@ export const useBetStore = defineStore('bet', () => {
   const plOverTime = ref<PLDataPoint[]>([])
   const summaryStats = ref<any>(null)
   const oddsBandsData = ref<OddsBandProfit[]>([])
+  const oddsCurveData = ref<OddsCurvePoint[]>([])
   const monthlyPLData = ref<MonthlyPLResponse | null>(null)
   const archivedStrategies = ref<ArchivedStrategy[]>([])
   const mergeSuggestions = ref<MergeSuggestion[]>([])
@@ -59,11 +60,11 @@ export const useBetStore = defineStore('bet', () => {
     }
   }
 
-  async function loadBets(skip: number = 0, limit: number = 100) {
+  async function loadBets(skip: number = 0, limit: number = 100, sortBy: string = 'settled_date', sortDir: string = 'desc') {
     try {
       loading.value = true
       const filtersWithStaking = { ...filters.value, ...stakingParams.value }
-      const response = await api.getBets(filtersWithStaking, skip, limit)
+      const response = await api.getBets(filtersWithStaking, skip, limit, sortBy, sortDir)
       bets.value = response.bets
       totalBets.value = response.total
     } catch (e: any) {
@@ -106,6 +107,15 @@ export const useBetStore = defineStore('bet', () => {
       error.value = e.message
     } finally {
       loading.value = false
+    }
+  }
+
+  async function loadOddsCurveData() {
+    try {
+      const filtersWithStaking = { ...filters.value, ...stakingParams.value }
+      oddsCurveData.value = await api.getProfitCurveByOdds(filtersWithStaking)
+    } catch (e: any) {
+      error.value = e.message
     }
   }
 
@@ -263,6 +273,7 @@ export const useBetStore = defineStore('bet', () => {
     plOverTime,
     summaryStats,
     oddsBandsData,
+    oddsCurveData,
     monthlyPLData,
     archivedStrategies,
     mergeSuggestions,
@@ -279,6 +290,7 @@ export const useBetStore = defineStore('bet', () => {
     loadPLOverTime,
     loadSummaryStats,
     loadOddsBandsData,
+    loadOddsCurveData,
     loadMonthlyPL,
     recalculateWithStaking,
     deleteBet,

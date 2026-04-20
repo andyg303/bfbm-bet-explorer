@@ -4,6 +4,7 @@ import { useBetStore } from '../stores/betStore'
 
 const betStore = useBetStore()
 const showHelp = ref(false)
+const recalculating = ref(false)
 
 const stakingTypes = [
   { value: 'default', label: 'Default (Original Stakes)' },
@@ -19,8 +20,13 @@ watch(() => betStore.stakingParams.staking_type, (val) => {
 })
 
 async function handleRecalculate() {
-  await betStore.recalculateWithStaking()
-  await betStore.refreshAll()
+  recalculating.value = true
+  try {
+    await betStore.recalculateWithStaking()
+    await betStore.refreshAll()
+  } finally {
+    recalculating.value = false
+  }
 }
 
 const isCustomStaking = computed(() => betStore.stakingParams.staking_type !== 'default')
@@ -108,6 +114,22 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
       </div>
     </div>
   </div>
+
+  <!-- Fullscreen recalculating overlay -->
+  <Teleport to="body">
+    <Transition name="fade">
+      <div v-if="recalculating" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-8 flex flex-col items-center gap-4 max-w-xs mx-4">
+          <svg class="w-12 h-12 animate-spin text-teal-400" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          <p class="text-sm font-semibold text-gray-900 dark:text-white">Recalculating…</p>
+          <p class="text-xs text-gray-500 text-center">Crunching the numbers with your new staking settings</p>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -128,5 +150,13 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
 .help-slide-leave-from {
   opacity: 1;
   max-height: 500px;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

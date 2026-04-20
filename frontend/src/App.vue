@@ -8,6 +8,7 @@ import StrategyStats from './components/StrategyStats.vue'
 import BetTable from './components/BetTable.vue'
 import Charts from './components/Charts.vue'
 import OddsBandsChart from './components/OddsBandsChart.vue'
+import AdvancedOddsCharts from './components/AdvancedOddsCharts.vue'
 import StakingCalculator from './components/StakingCalculator.vue'
 import SummaryHeader from './components/SummaryHeader.vue'
 import IngestData from './components/IngestData.vue'
@@ -447,6 +448,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
             <Charts />
             <MonthlyPLTable />
             <OddsBandsChart />
+            <AdvancedOddsCharts />
             <BetTable />
           </div>
         </div>

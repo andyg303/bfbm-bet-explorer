@@ -1108,13 +1108,38 @@ def get_bets(
     filters: FilterParams,
     skip: int = Query(0),
     limit: int = Query(100, le=500),
+    sort_by: str = Query('settled_date'),
+    sort_dir: str = Query('desc'),
     user: User = Depends(require_active_subscription),
     db: Session = Depends(get_db),
 ):
     """Get filtered bets with pagination."""
+    # Map frontend sort keys to Bet model columns
+    sort_column_map = {
+        'settled_date': Bet.settled_date,
+        'description': Bet.description,
+        'selection': Bet.selection,
+        'bet_type': Bet.bet_type,
+        'matched_amount': Bet.matched_amount,
+        'avg_price_matched': Bet.avg_price_matched,
+        'bsp': Bet.bsp,
+        'bsp_diff_absolute': Bet.bsp_diff_absolute,
+        'bsp_diff_percentage': Bet.bsp_diff_percentage,
+        'bsp_diff_probability': Bet.bsp_diff_probability,
+        'lay_liability': Bet.lay_liability,
+        'status': Bet.status,
+        'profit_loss': Bet.profit_loss,
+        'strategy': Bet.strategy,
+        'event': Bet.event,
+        'competition': Bet.competition,
+        'market_type': Bet.market_type,
+    }
+    sort_col = sort_column_map.get(sort_by, Bet.settled_date)
+    order_clause = sort_col.asc() if sort_dir == 'asc' else sort_col.desc()
+
     query = db.query(Bet)
     query = apply_filters(query, filters, user.id)
-    query = query.order_by(Bet.settled_date.desc())
+    query = query.order_by(order_clause)
 
     if filters.staking_type and filters.staking_type != 'default':
         strategy_counts = {}
@@ -1122,7 +1147,8 @@ def get_bets(
         if filters.deduplicate:
             all_bets = query.all()
             deduped, strategy_counts, strategies_map = deduplicate_bets(all_bets)
-            deduped.sort(key=lambda b: b.settled_date or datetime.min, reverse=True)
+            sort_attr = sort_by if hasattr(Bet, sort_by) else 'settled_date'
+            deduped.sort(key=lambda b: getattr(b, sort_attr, None) or (datetime.min if sort_attr == 'settled_date' else ''), reverse=(sort_dir == 'desc'))
             total = len(deduped)
             bets = deduped[skip:skip + limit]
         else:
@@ -1397,6 +1423,75 @@ def get_odds_bands_profit(
             "total_pl": round(total_pl, 2), "total_staked": round(total_staked, 2),
             "roi": round(roi, 2),
         })
+    return result
+
+
+@app.post("/profit-curve-by-odds")
+def get_profit_curve_by_odds(
+    filters: FilterParams,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Get cumulative P&L, EV, and ROI walking from low to high odds."""
+    query = db.query(Bet)
+    query = apply_filters(query, filters, user.id)
+    bets = query.all()
+    if filters.deduplicate and filters.staking_type and filters.staking_type != 'default':
+        bets, _, _ = deduplicate_bets(bets)
+
+    # Build per-bet records with odds, pl, stake, ev
+    records = []
+    for bet in bets:
+        odds = bet.avg_price_matched
+        if not odds or odds <= 1:
+            continue
+        if bet.profit_loss is None:
+            continue
+
+        if filters.staking_type and filters.staking_type != 'default':
+            new_stake = calculate_new_stake(
+                bet.bet_type, bet.matched_amount, bet.avg_price_matched,
+                filters.staking_type, filters.base_stake,
+            )
+            pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
+            stake = calculate_stake_or_liability(bet.bet_type, new_stake, bet.avg_price_matched)
+        else:
+            pl = bet.profit_loss or 0
+            stake = bet.lay_liability if bet.bet_type == 'LAY' else (bet.matched_amount or 0)
+
+        # EV: if BSP available, compute EV = stake * (odds/bsp - 1) for BACK, adjusted for LAY
+        ev = 0
+        if bet.bsp and bet.bsp > 0:
+            if bet.bet_type == 'BACK':
+                implied_prob = 1.0 / bet.bsp
+                ev = stake * ((odds - 1) * implied_prob - (1 - implied_prob))
+            else:  # LAY
+                implied_prob = 1.0 / bet.bsp
+                ev = stake * ((1 - implied_prob) - (odds - 1) * implied_prob)
+
+        records.append({"odds": odds, "pl": pl, "stake": stake, "ev": ev})
+
+    # Sort by odds ascending
+    records.sort(key=lambda r: r["odds"])
+
+    cum_pl = 0
+    cum_ev = 0
+    cum_stake = 0
+    result = []
+    for r in records:
+        cum_pl += r["pl"]
+        cum_ev += r["ev"]
+        cum_stake += r["stake"]
+        roi_pl = (cum_pl / cum_stake * 100) if cum_stake > 0 else 0
+        roi_ev = (cum_ev / cum_stake * 100) if cum_stake > 0 else 0
+        result.append({
+            "odds": round(r["odds"], 2),
+            "cum_pl": round(cum_pl, 2),
+            "cum_ev": round(cum_ev, 2),
+            "roi_pl": round(roi_pl, 2),
+            "roi_ev": round(roi_ev, 2),
+        })
+
     return result
 
 
