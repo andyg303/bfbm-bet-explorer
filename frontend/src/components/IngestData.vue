@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { ref, watch } from 'vue'
 import { uploadBetsCSV, type IngestProgressEvent } from '../services/api'
 import { useBetStore } from '../stores/betStore'
 
@@ -41,7 +41,7 @@ const funnyPhrases = [
   'Bet you didn\'t expect it to take this long… 😏',
 ]
 const funnyMessage = ref('')
-let funnyInterval: ReturnType<typeof setInterval> | null = null
+let lastPhraseAtRow = 0
 
 function pickPhrase() {
   return funnyPhrases[Math.floor(Math.random() * funnyPhrases.length)] ?? ''
@@ -49,22 +49,25 @@ function pickPhrase() {
 
 function startFunnyMessages() {
   funnyMessage.value = pickPhrase()
-  funnyInterval = setInterval(() => {
+  lastPhraseAtRow = 0
+}
+
+function onProgressUpdate(processed: number) {
+  if (processed - lastPhraseAtRow >= 1000) {
     funnyMessage.value = pickPhrase()
-  }, 10000)
+    lastPhraseAtRow = processed
+  }
 }
 
 function stopFunnyMessages() {
-  if (funnyInterval) { clearInterval(funnyInterval); funnyInterval = null }
   funnyMessage.value = ''
+  lastPhraseAtRow = 0
 }
 
 watch(status, (val) => {
-  if (val === 'processing' || val === 'sending') startFunnyMessages()
-  else stopFunnyMessages()
+  if (val === 'sending') startFunnyMessages()
+  else if (val !== 'processing') stopFunnyMessages()
 })
-
-onUnmounted(() => stopFunnyMessages())
 
 function openFilePicker() {
   fileInput.value?.click()
@@ -98,6 +101,7 @@ async function ingest() {
       rafHandle = 0
       if (pendingProgress) {
         processedRows.value = pendingProgress.processed || 0
+        onProgressUpdate(processedRows.value)
         insertedCount.value = pendingProgress.inserted || 0
         updatedCount.value = pendingProgress.updated || 0
         skippedCount.value = pendingProgress.skipped || 0
@@ -287,6 +291,7 @@ function close() {
           </svg>
           <span>Sending file to server…</span>
         </div>
+        <p v-if="funnyMessage" class="mt-2 text-[11px] text-gray-400 italic text-center">{{ funnyMessage }}</p>
       </div>
 
       <!-- Processing progress -->
