@@ -18,13 +18,14 @@ import AuthPage from './components/AuthPage.vue'
 import LandingPage from './components/LandingPage.vue'
 import PricingPage from './components/PricingPage.vue'
 import AccountSettings from './components/AccountSettings.vue'
+import AdminDashboard from './components/AdminDashboard.vue'
 
 const betStore = useBetStore()
 const auth = useAuthStore()
 const { isDark, toggle: toggleDark } = useDarkMode()
 
 // ─── Page routing (SPA-style with real URLs) ────────────────────────────────
-type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard' | 'forgot-password' | 'reset-password' | 'account'
+type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard' | 'forgot-password' | 'reset-password' | 'account' | 'admin'
 const currentPage = ref<AppPage>('landing')
 const authInitialMode = ref<'login' | 'register' | 'forgot' | 'reset'>('login')
 const resetTokenFromUrl = ref('')
@@ -39,6 +40,7 @@ const PAGE_PATHS: Record<AppPage, string> = {
   'forgot-password': '/forgot-password',
   'reset-password': '/reset-password',
   account: '/account',
+  admin: '/admin',
 }
 
 function pageFromPath(path: string): AppPage {
@@ -74,6 +76,12 @@ function determineInitialPage(): AppPage {
   if (urlPage === 'account') {
     if (!auth.isAuthenticated) return 'login'
     return 'account'
+  }
+  // Guard: admin page requires auth + admin
+  if (urlPage === 'admin') {
+    if (!auth.isAuthenticated) return 'login'
+    if (!auth.user?.is_admin) return 'dashboard'
+    return 'admin'
   }
   // Guard: dashboard requires auth + subscription
   if (urlPage === 'dashboard') {
@@ -291,7 +299,15 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
   <AccountSettings
     v-else-if="currentPage === 'account'"
     @navigate="navigateTo"
-  />  <!-- ═══════ Dashboard (authenticated + active subscription) ═══════ -->
+  />
+
+  <!-- ═══════ Admin Dashboard (admin only) ═══════ -->
+  <AdminDashboard
+    v-else-if="currentPage === 'admin' && auth.user?.is_admin"
+    @navigate="navigateTo"
+  />
+
+  <!-- ═══════ Dashboard (authenticated + active subscription) ═══════ -->
   <div v-else-if="showDashboard" class="min-h-screen bg-gray-50 dark:bg-[#0b0f1a] text-gray-800 dark:text-gray-200 transition-colors duration-200">
     <!-- ═══════════ Top Navbar ═══════════ -->
     <nav class="sticky top-0 z-50 bg-white/80 dark:bg-[#0b0f1a]/80 backdrop-blur-2xl border-b border-gray-200 dark:border-gray-800/40">
@@ -372,6 +388,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
                     </div>
                   </div>
                   <div class="py-1">
+                    <button v-if="auth.user?.is_admin" @click="navigateTo('admin'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 flex items-center gap-2 transition-colors">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+                      Admin Dashboard
+                    </button>
                     <button @click="navigateTo('account'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                       Account Settings

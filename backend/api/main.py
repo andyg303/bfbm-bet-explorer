@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import get_db, SessionLocal, Bet, User, init_db
+from database import get_db, SessionLocal, Bet, User, IngestionLog, init_db
 from scripts.ingest_bets import ingest_csv_file, sanitize_strategy_name, read_csv, normalize_columns
 from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability, deduplicate_bets
 from api.auth import (
@@ -58,6 +58,7 @@ from api.auth import (
 )
 from jose import JWTError, jwt
 from api.stripe_routes import router as stripe_router
+from api.admin import router as admin_router
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -140,11 +141,32 @@ async def lifespan(app):
         if 'password_reset_token_id' not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN password_reset_token_id VARCHAR"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_password_reset_token_id ON users (password_reset_token_id)"))
+
+        # ── IngestionLog table ──
+        if not insp.has_table('ingestion_logs'):
+            conn.execute(text("""
+                CREATE TABLE ingestion_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    filename VARCHAR NOT NULL,
+                    status VARCHAR NOT NULL,
+                    rows_total INTEGER DEFAULT 0,
+                    rows_inserted INTEGER DEFAULT 0,
+                    rows_updated INTEGER DEFAULT 0,
+                    rows_skipped INTEGER DEFAULT 0,
+                    error_message VARCHAR,
+                    warnings VARCHAR,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ingestion_logs_user_id ON ingestion_logs (user_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ingestion_logs_status ON ingestion_logs (status)"))
     yield
 
 
 app = FastAPI(title="BFBM Bet Explorer API", lifespan=lifespan, docs_url=None, redoc_url=None)
 app.include_router(stripe_router)
+app.include_router(admin_router)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -1539,16 +1561,41 @@ async def ingest_csv(
                 tmp_path, db, user_id=user_id, progress_callback=on_progress
             )
             total_bets = db.query(Bet).filter(Bet.user_id == user_id).count()
+            warnings_list = result.get('warnings', [])
+            log_entry = IngestionLog(
+                user_id=user_id,
+                filename=filename,
+                status='partial' if warnings_list else 'success',
+                rows_total=total_rows,
+                rows_inserted=result['inserted'],
+                rows_updated=result['updated'],
+                rows_skipped=result['skipped'],
+                warnings=json.dumps(warnings_list) if warnings_list else None,
+            )
+            db.add(log_entry)
+            db.commit()
             event_queue.put({
                 'type': 'complete',
                 'filename': filename,
                 'inserted': result['inserted'],
                 'updated': result['updated'],
                 'skipped': result['skipped'],
-                'warnings': result.get('warnings', []),
+                'warnings': warnings_list,
                 'total_bets_in_db': total_bets,
             })
         except Exception as e:
+            try:
+                log_entry = IngestionLog(
+                    user_id=user_id,
+                    filename=filename,
+                    status='error',
+                    rows_total=total_rows,
+                    error_message=str(e)[:2000],
+                )
+                db.add(log_entry)
+                db.commit()
+            except Exception:
+                pass
             event_queue.put({'type': 'error', 'detail': str(e)})
         finally:
             db.close()

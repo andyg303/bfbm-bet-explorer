@@ -431,3 +431,41 @@ export const getAllStrategies = async (): Promise<StrategyInfo[]> => {
   const response = await api.get('/strategies/all')
   return response.data
 }
+
+// ─── Admin endpoints ─────────────────────────────────────────────────────────
+
+export const getAdminStats = async () => {
+  const response = await api.get('/admin/stats')
+  return response.data
+}
+
+export const getAdminUsers = async (params: {
+  page?: number
+  per_page?: number
+  search?: string
+  sort?: string
+  order?: string
+} = {}) => {
+  const response = await api.get('/admin/users', { params })
+  return response.data
+}
+
+export const getAdminIngestionLogs = async (params: {
+  page?: number
+  per_page?: number
+  status?: string
+  user_id?: number
+} = {}) => {
+  const response = await api.get('/admin/ingestion-logs', { params })
+  return response.data
+}
+
+export const toggleUserActive = async (userId: number) => {
+  const response = await api.post(`/admin/users/${userId}/toggle-active`)
+  return response.data
+}
+
+export const unlockUser = async (userId: number) => {
+  const response = await api.post(`/admin/users/${userId}/unlock`)
+  return response.data
+}

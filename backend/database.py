@@ -98,6 +98,25 @@ class Bet(Base):
         Index('idx_user_strategy', 'user_id', 'strategy'),
     )
 
+
+class IngestionLog(Base):
+    """Tracks every CSV upload — successes, warnings, and errors."""
+    __tablename__ = "ingestion_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    filename = Column(String, nullable=False)
+    status = Column(String, nullable=False, index=True)  # success | partial | error
+    rows_total = Column(Integer, default=0)
+    rows_inserted = Column(Integer, default=0)
+    rows_updated = Column(Integer, default=0)
+    rows_skipped = Column(Integer, default=0)
+    error_message = Column(String, nullable=True)
+    warnings = Column(String, nullable=True)  # JSON array of warning strings
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    user = relationship("User")
+
 def get_db():
     db = SessionLocal()
     try:
