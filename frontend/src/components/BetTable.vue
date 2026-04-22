@@ -227,7 +227,7 @@ async function handleDelete(bet: any) {
       <table class="data-table">
         <thead>
           <tr>
-            <th @click="sort('start_time')" class="cursor-pointer hover:text-teal-400 transition-colors">Date <span v-if="sortKey === 'start_time'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('start_time')" class="cursor-pointer hover:text-teal-400 transition-colors">Event Date <span v-if="sortKey === 'start_time'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th class="whitespace-nowrap">Time</th>
             <th @click="sort('description')" class="cursor-pointer hover:text-teal-400 transition-colors">Event <span v-if="sortKey === 'description'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('selection')" class="cursor-pointer hover:text-teal-400 transition-colors">Selection <span v-if="sortKey === 'selection'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
