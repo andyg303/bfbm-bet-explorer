@@ -570,6 +570,13 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None, progress_ca
             settled_date = safe_get(row, 'settled_date')
             start_time   = safe_get(row, 'start_time')
 
+            # Fallback: many BFBM CSV exports (e.g. classic "bet history")
+            # don't include a Settled Date column. We rely on settled_date
+            # throughout the app for sorting/filtering/charting, so derive
+            # a sensible fallback: event start time first, then placed date.
+            if settled_date is None:
+                settled_date = start_time or placed_date
+
             # ── Assemble bet record ───────────────────────────────────────
             bet_data = {
                 'bet_id':                 bet_id,
