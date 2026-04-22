@@ -20,6 +20,7 @@ import LandingPage from './components/LandingPage.vue'
 import PricingPage from './components/PricingPage.vue'
 import AccountSettings from './components/AccountSettings.vue'
 import AdminDashboard from './components/AdminDashboard.vue'
+import LoadingOverlay from './components/LoadingOverlay.vue'
 
 const betStore = useBetStore()
 const auth = useAuthStore()
@@ -201,14 +202,28 @@ async function handleChangePassword() {
 
 const archivedCount = computed(() => betStore.archivedStrategies.length)
 
+// Tracks the initial dashboard data load (first paint after login/refresh).
+// Used to show a full-screen spinner so users know something is happening
+// while the various endpoints (which can take 5-10 seconds) return.
+const initialDashboardLoading = ref(false)
+const hasLoadedDashboardOnce = ref(false)
+
 async function loadDashboardData() {
-  await betStore.migrateDeletedToArchived()
-  await betStore.loadFilterOptions()
-  await betStore.loadSummaryStats()
-  await betStore.refreshAll()
-  await betStore.loadArchivedStrategies()
-  // Load merge suggestions in the background for the badge count
-  betStore.loadMergeSuggestions()
+  if (!hasLoadedDashboardOnce.value) {
+    initialDashboardLoading.value = true
+  }
+  try {
+    await betStore.migrateDeletedToArchived()
+    await betStore.loadFilterOptions()
+    await betStore.loadSummaryStats()
+    await betStore.refreshAll()
+    await betStore.loadArchivedStrategies()
+    // Load merge suggestions in the background for the badge count
+    betStore.loadMergeSuggestions()
+  } finally {
+    initialDashboardLoading.value = false
+    hasLoadedDashboardOnce.value = true
+  }
 }
 
 onMounted(async () => {
@@ -497,6 +512,13 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
         <div class="h-full bg-gradient-to-r from-teal-500 to-sky-500 animate-progress-bar" />
       </div>
     </Transition>
+
+    <!-- Initial dashboard loading overlay (first paint only) -->
+    <LoadingOverlay
+      :show="initialDashboardLoading"
+      title="Loading your dashboard…"
+      message="Fetching your bets, strategies and stats. This usually takes a few seconds."
+    />
 
     <!-- ═══════════ Change Password Modal ═══════════ -->
     <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
