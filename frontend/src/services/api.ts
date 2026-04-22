@@ -155,6 +155,7 @@ export interface Bet {
   profit_loss: number | null
   strategy: string | null
   settled_date: string | null
+  start_time: string | null
   placed_date: string | null
   matched_date: string | null
   market_type: string | null
@@ -228,7 +229,7 @@ export const getStrategyStats = async (filters: FilterParams): Promise<StrategyS
   return response.data
 }
 
-export const getBets = async (filters: FilterParams, skip: number = 0, limit: number = 100, sortBy: string = 'settled_date', sortDir: string = 'desc') => {
+export const getBets = async (filters: FilterParams, skip: number = 0, limit: number = 100, sortBy: string = 'start_time', sortDir: string = 'desc') => {
   const response = await api.post(`/bets?skip=${skip}&limit=${limit}&sort_by=${sortBy}&sort_dir=${sortDir}`, filters)
   return response.data
 }

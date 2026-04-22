@@ -315,9 +315,9 @@ def apply_filters(query, filters: FilterParams, user_id: int):
     if filters.max_pl is not None:
         query = query.filter(Bet.profit_loss <= filters.max_pl)
     if filters.date_from:
-        query = query.filter(Bet.settled_date >= datetime.fromisoformat(filters.date_from))
+        query = query.filter(Bet.start_time >= datetime.fromisoformat(filters.date_from))
     if filters.date_to:
-        query = query.filter(Bet.settled_date <= datetime.fromisoformat(filters.date_to))
+        query = query.filter(Bet.start_time <= datetime.fromisoformat(filters.date_to))
     if filters.selection_search:
         safe_sel = filters.selection_search.replace("%", "\\%").replace("_", "\\_")
         query = query.filter(Bet.selection.ilike(f"%{safe_sel}%", escape="\\"))
@@ -714,8 +714,8 @@ def get_archived_strategies(
         func.sum(case((Bet.bet_type == 'LAY', Bet.lay_liability), else_=Bet.matched_amount)).label('total_staked'),
         func.avg(Bet.avg_price_matched).label('avg_odds'),
         func.sum(case((Bet.profit_loss > 0, 1), else_=0)).label('num_won'),
-        func.min(Bet.settled_date).label('first_bet'),
-        func.max(Bet.settled_date).label('last_bet'),
+        func.min(Bet.start_time).label('first_bet'),
+        func.max(Bet.start_time).label('last_bet'),
     ).filter(
         Bet.user_id == user.id,
         Bet.is_archived == True,       # noqa: E712
@@ -794,8 +794,8 @@ def get_merge_suggestions(
             Bet.strategy_id,
             Bet.strategy,
             func.count(Bet.id).label("num_bets"),
-            func.min(Bet.settled_date).label("first_bet"),
-            func.max(Bet.settled_date).label("last_bet"),
+            func.min(Bet.start_time).label("first_bet"),
+            func.max(Bet.start_time).label("last_bet"),
         )
         .filter(base_filter)
         .group_by(Bet.strategy_id, Bet.strategy)
@@ -882,8 +882,8 @@ def get_all_strategies(
             Bet.strategy,
             func.count(Bet.id).label("num_bets"),
             func.sum(Bet.profit_loss).label("total_pl"),
-            func.min(Bet.settled_date).label("first_bet"),
-            func.max(Bet.settled_date).label("last_bet"),
+            func.min(Bet.start_time).label("first_bet"),
+            func.max(Bet.start_time).label("last_bet"),
         )
         .filter(
             Bet.user_id == user.id,
@@ -1108,7 +1108,7 @@ def get_bets(
     filters: FilterParams,
     skip: int = Query(0),
     limit: int = Query(100, le=500),
-    sort_by: str = Query('settled_date'),
+    sort_by: str = Query('start_time'),
     sort_dir: str = Query('desc'),
     user: User = Depends(require_active_subscription),
     db: Session = Depends(get_db),
@@ -1116,7 +1116,9 @@ def get_bets(
     """Get filtered bets with pagination."""
     # Map frontend sort keys to Bet model columns
     sort_column_map = {
+        'start_time': Bet.start_time,
         'settled_date': Bet.settled_date,
+        'placed_date': Bet.placed_date,
         'description': Bet.description,
         'selection': Bet.selection,
         'bet_type': Bet.bet_type,
@@ -1134,7 +1136,7 @@ def get_bets(
         'competition': Bet.competition,
         'market_type': Bet.market_type,
     }
-    sort_col = sort_column_map.get(sort_by, Bet.settled_date)
+    sort_col = sort_column_map.get(sort_by, Bet.start_time)
     order_clause = sort_col.asc() if sort_dir == 'asc' else sort_col.desc()
 
     query = db.query(Bet)
@@ -1147,8 +1149,8 @@ def get_bets(
         if filters.deduplicate:
             all_bets = query.all()
             deduped, strategy_counts, strategies_map = deduplicate_bets(all_bets)
-            sort_attr = sort_by if hasattr(Bet, sort_by) else 'settled_date'
-            deduped.sort(key=lambda b: getattr(b, sort_attr, None) or (datetime.min if sort_attr == 'settled_date' else ''), reverse=(sort_dir == 'desc'))
+            sort_attr = sort_by if hasattr(Bet, sort_by) else 'start_time'
+            deduped.sort(key=lambda b: getattr(b, sort_attr, None) or (datetime.min if sort_attr in ('start_time', 'settled_date', 'placed_date') else ''), reverse=(sort_dir == 'desc'))
             total = len(deduped)
             bets = deduped[skip:skip + limit]
         else:
@@ -1167,6 +1169,7 @@ def get_bets(
                 "bsp_diff_probability": bet.bsp_diff_probability,
                 "status": bet.status, "profit_loss": bet.profit_loss,
                 "strategy": bet.strategy, "settled_date": bet.settled_date,
+                "start_time": bet.start_time,
                 "placed_date": bet.placed_date, "matched_date": bet.matched_date,
                 "market_type": bet.market_type, "lay_liability": bet.lay_liability,
                 "country_code": bet.country_code, "event": bet.event,
@@ -1203,9 +1206,9 @@ def get_pl_over_time(
 ):
     """Get P/L over time data."""
     if filters.staking_type and filters.staking_type != 'default':
-        query = db.query(Bet).filter(Bet.settled_date.isnot(None))
+        query = db.query(Bet).filter(Bet.start_time.isnot(None))
         query = apply_filters(query, filters, user.id)
-        query = query.order_by(Bet.settled_date)
+        query = query.order_by(Bet.start_time)
         bets = query.all()
         if filters.deduplicate:
             bets, _, _ = deduplicate_bets(bets)
@@ -1213,7 +1216,7 @@ def get_pl_over_time(
         for bet in bets:
             if not bet.avg_price_matched or bet.profit_loss is None or not bet.matched_amount:
                 continue
-            date_key = str(bet.settled_date.date())
+            date_key = str(bet.start_time.date())
             if date_key not in daily_data:
                 daily_data[date_key] = 0
             new_stake = calculate_new_stake(
@@ -1231,11 +1234,11 @@ def get_pl_over_time(
         return data
 
     query = db.query(
-        func.date(Bet.settled_date).label('date'),
+        func.date(Bet.start_time).label('date'),
         func.sum(Bet.profit_loss).label('daily_pl'),
-    ).filter(Bet.settled_date.isnot(None))
+    ).filter(Bet.start_time.isnot(None))
     query = apply_filters(query, filters, user.id)
-    query = query.group_by(func.date(Bet.settled_date)).order_by(func.date(Bet.settled_date))
+    query = query.group_by(func.date(Bet.start_time)).order_by(func.date(Bet.start_time))
     results = query.all()
     cumulative_pl = 0
     data = []
@@ -1502,9 +1505,9 @@ def get_monthly_pl(
     db: Session = Depends(get_db),
 ):
     """Get monthly P/L in year×month grid format, plus key statistics."""
-    query = db.query(Bet).filter(Bet.settled_date.isnot(None))
+    query = db.query(Bet).filter(Bet.start_time.isnot(None))
     query = apply_filters(query, filters, user.id)
-    query = query.order_by(Bet.settled_date)
+    query = query.order_by(Bet.start_time)
     bets = query.all()
     if filters.deduplicate and filters.staking_type and filters.staking_type != 'default':
         bets, _, _ = deduplicate_bets(bets)
@@ -1512,7 +1515,7 @@ def get_monthly_pl(
     monthly: dict[str, float] = {}
     daily_buckets: dict[str, float] = {}
     for bet in bets:
-        if bet.profit_loss is None or bet.settled_date is None:
+        if bet.profit_loss is None or bet.start_time is None:
             continue
         if filters.staking_type and filters.staking_type != 'default':
             if not bet.avg_price_matched or not bet.matched_amount:
@@ -1524,9 +1527,9 @@ def get_monthly_pl(
             pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
         else:
             pl = bet.profit_loss
-        month_key = bet.settled_date.strftime("%Y-%m")
+        month_key = bet.start_time.strftime("%Y-%m")
         monthly[month_key] = monthly.get(month_key, 0) + pl
-        day_key = str(bet.settled_date.date())
+        day_key = str(bet.start_time.date())
         daily_buckets[day_key] = daily_buckets.get(day_key, 0) + pl
 
     daily_pls = [daily_buckets[k] for k in sorted(daily_buckets.keys())]

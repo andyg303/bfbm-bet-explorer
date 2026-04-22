@@ -570,12 +570,26 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None, progress_ca
             settled_date = safe_get(row, 'settled_date')
             start_time   = safe_get(row, 'start_time')
 
-            # Fallback: many BFBM CSV exports (e.g. classic "bet history")
-            # don't include a Settled Date column. We rely on settled_date
-            # throughout the app for sorting/filtering/charting, so derive
-            # a sensible fallback: event start time first, then placed date.
+            # `start_time` (event date/time) is the canonical date used for
+            # sorting, filtering, and charting throughout the app.
+            # If the CSV doesn't include it, fall back to settled date, then
+            # placed date. If none of the three are present, skip the row.
+            if start_time is None:
+                start_time = settled_date or placed_date
+            if start_time is None:
+                error_count += 1
+                if error_count <= 5:
+                    warnings.append(
+                        f"Row {idx + 2}: skipped — no Start time, Settled date "
+                        f"or Placed date found. At least one date column is required."
+                    )
+                elif error_count == 6:
+                    warnings.append("(Further row errors suppressed)")
+                skipped += 1
+                continue
+            # Keep settled_date populated too so legacy data stays consistent.
             if settled_date is None:
-                settled_date = start_time or placed_date
+                settled_date = start_time
 
             # ── Assemble bet record ───────────────────────────────────────
             bet_data = {

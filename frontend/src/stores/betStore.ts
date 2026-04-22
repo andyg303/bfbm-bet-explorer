@@ -60,7 +60,7 @@ export const useBetStore = defineStore('bet', () => {
     }
   }
 
-  async function loadBets(skip: number = 0, limit: number = 100, sortBy: string = 'settled_date', sortDir: string = 'desc') {
+  async function loadBets(skip: number = 0, limit: number = 100, sortBy: string = 'start_time', sortDir: string = 'desc') {
     try {
       loading.value = true
       const filtersWithStaking = { ...filters.value, ...stakingParams.value }
