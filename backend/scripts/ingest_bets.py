@@ -269,16 +269,27 @@ def apply_commission(profit_loss):
 
 def parse_datetime(value):
     """Parse datetime strings in multiple formats (ISO, DD/MM/YYYY, etc.).
-    Rejects sentinel dates like 0001-01-01 used for unsettled bets."""
+    Rejects sentinel dates like 0001-01-01 used for unsettled bets.
+
+    IMPORTANT: pandas' `dayfirst=True` mis-parses unambiguous ISO strings
+    like "2026-03-12" as "2026-12-03" when both day and month are <= 12
+    (it silently swaps them and only emits a UserWarning). To handle BFBM
+    exports correctly we detect ISO-style strings (YYYY-MM-DD...) and parse
+    them with dayfirst=False, falling back to dayfirst=True for slash/dot
+    formats (e.g. UK-style 11/02/2026)."""
     if pd.isna(value) or value is None:
         return None
     s = str(value).strip()
     if not s:
         return None
+    # ISO 8601-ish: starts with 4-digit year and a dash (e.g. 2026-03-12 or 2026-03-12T23:30:00)
+    is_iso = bool(re.match(r'^\d{4}-\d{1,2}-\d{1,2}', s))
     try:
-        # dayfirst=True handles DD/MM/YYYY (UK/Betfair standard)
-        # ISO format (YYYY-MM-DD) is unambiguous and still parsed correctly
-        dt = pd.to_datetime(s, dayfirst=True)
+        if is_iso:
+            dt = pd.to_datetime(s, dayfirst=False)
+        else:
+            # dayfirst=True handles DD/MM/YYYY (UK/Betfair standard)
+            dt = pd.to_datetime(s, dayfirst=True)
         if pd.isna(dt):
             return None
         # Reject sentinel dates (e.g. 0001-01-01 for unsettled bets)
