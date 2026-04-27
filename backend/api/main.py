@@ -203,6 +203,7 @@ app.add_middleware(
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 SMTP_FROM = os.getenv("SMTP_FROM", "noreply@bfbmbetexplorer.com")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3080")
+CONTACT_TO_EMAIL = os.getenv("CONTACT_TO_EMAIL", "")
 
 
 def send_reset_email(to_email: str, token: str) -> bool:
@@ -368,6 +369,60 @@ async def require_active_subscription(
                 detail="Your subscription has expired. Please renew to continue.",
             )
     return user
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Contact form endpoint (public — no auth required)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ContactRequest(BaseModel):
+    name: str
+    email: str
+    subject: str
+    message: str
+
+@app.post("/contact")
+def submit_contact(req: ContactRequest):
+    """Receive a contact form submission and forward it via Resend."""
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not set — contact form email not sent")
+        return {"ok": True}  # Silently succeed so we don't reveal config gaps
+
+    to = CONTACT_TO_EMAIL or SMTP_FROM  # Fall back to the FROM address if not set
+
+    try:
+        import resend
+        resend.api_key = RESEND_API_KEY
+        resend.Emails.send({
+            "from": SMTP_FROM,
+            "to": [to],
+            "reply_to": req.email,
+            "subject": f"[BFBMExplorer Contact] {req.subject}",
+            "html": (
+                f'<div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px">'
+                f'<h2 style="color:#0d9488;margin-top:0">New Contact Form Submission</h2>'
+                f'<table style="width:100%;border-collapse:collapse;margin-bottom:20px">'
+                f'<tr><td style="padding:8px 0;color:#888;font-size:13px;width:80px">Name</td>'
+                f'<td style="padding:8px 0;font-weight:600">{req.name}</td></tr>'
+                f'<tr><td style="padding:8px 0;color:#888;font-size:13px">Email</td>'
+                f'<td style="padding:8px 0"><a href="mailto:{req.email}" style="color:#0d9488">{req.email}</a></td></tr>'
+                f'<tr><td style="padding:8px 0;color:#888;font-size:13px">Subject</td>'
+                f'<td style="padding:8px 0">{req.subject}</td></tr>'
+                f'</table>'
+                f'<div style="background:#f9fafb;border-left:4px solid #0d9488;padding:16px;border-radius:0 8px 8px 0">'
+                f'<p style="margin:0;white-space:pre-wrap">{req.message}</p>'
+                f'</div>'
+                f'<p style="color:#aaa;font-size:12px;margin-top:20px">'
+                f'Reply directly to this email to respond to {req.name}.</p>'
+                f'</div>'
+            ),
+        })
+        logger.info("Contact form email sent from %s", req.email)
+    except Exception:
+        logger.exception("Failed to send contact form email from %s", req.email)
+        raise HTTPException(status_code=500, detail="Failed to send message. Please try again.")
+
+    return {"ok": True}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

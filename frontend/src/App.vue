@@ -21,13 +21,14 @@ import PricingPage from './components/PricingPage.vue'
 import AccountSettings from './components/AccountSettings.vue'
 import AdminDashboard from './components/AdminDashboard.vue'
 import LoadingOverlay from './components/LoadingOverlay.vue'
+import ContactPage from './components/ContactPage.vue'
 
 const betStore = useBetStore()
 const auth = useAuthStore()
 const { isDark, toggle: toggleDark } = useDarkMode()
 
 // ─── Page routing (SPA-style with real URLs) ────────────────────────────────
-type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard' | 'forgot-password' | 'reset-password' | 'account' | 'admin'
+type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard' | 'forgot-password' | 'reset-password' | 'account' | 'admin' | 'contact'
 const currentPage = ref<AppPage>('landing')
 const authInitialMode = ref<'login' | 'register' | 'forgot' | 'reset'>('login')
 const resetTokenFromUrl = ref('')
@@ -43,6 +44,7 @@ const PAGE_PATHS: Record<AppPage, string> = {
   'reset-password': '/reset-password',
   account: '/account',
   admin: '/admin',
+  contact: '/contact',
 }
 
 function pageFromPath(path: string): AppPage {
@@ -317,6 +319,12 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
     @navigate="navigateTo"
   />
 
+  <!-- ═══════ Contact page ═══════ -->
+  <ContactPage
+    v-else-if="currentPage === 'contact'"
+    @navigate="navigateTo"
+  />
+
   <!-- ═══════ Admin Dashboard (admin only) ═══════ -->
   <AdminDashboard
     v-else-if="currentPage === 'admin' && auth.user?.is_admin"
@@ -374,6 +382,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
 
           <!-- Right: Actions -->
           <div class="flex items-center gap-1.5">
+            <button @click="navigateTo('contact')" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800/50 rounded-lg transition-colors" title="Contact / Help">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+              Help
+            </button>
             <IngestData />
             <button @click="toggleDark" class="relative p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-all duration-200" :title="isDark ? 'Light Mode' : 'Dark Mode'">
               <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="rotate-90 opacity-0" enter-to-class="rotate-0 opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="rotate-0 opacity-100" leave-to-class="-rotate-90 opacity-0" mode="out-in">
