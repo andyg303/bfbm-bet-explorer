@@ -2,11 +2,13 @@
 import { ref, onMounted, computed } from 'vue'
 import { useBetStore } from '../stores/betStore'
 import ConfirmDialog from './ConfirmDialog.vue'
+import LoadingOverlay from './LoadingOverlay.vue'
 
 const betStore = useBetStore()
 const selectedStrategies = ref<Set<string>>(new Set())
 const showRestoreDialog = ref(false)
 const searchQuery = ref('')
+const restoring = ref(false)
 
 onMounted(() => {
   betStore.loadArchivedStrategies()
@@ -35,9 +37,14 @@ function toggleAll() {
 }
 
 async function confirmRestore() {
-  await betStore.restoreStrategies(Array.from(selectedStrategies.value))
-  selectedStrategies.value.clear()
   showRestoreDialog.value = false
+  restoring.value = true
+  try {
+    await betStore.restoreStrategies(Array.from(selectedStrategies.value))
+    selectedStrategies.value.clear()
+  } finally {
+    restoring.value = false
+  }
 }
 
 function formatDate(dateStr: string | null) {
@@ -164,6 +171,12 @@ function formatDate(dateStr: string | null) {
       icon="restore"
       @confirm="confirmRestore"
       @cancel="showRestoreDialog = false"
+    />
+
+    <LoadingOverlay
+      :show="restoring"
+      title="Restoring strategies…"
+      message="Returning the selected strategies to the dashboard and recalculating stats. This can take up to a minute for large data sets — please wait."
     />
   </div>
 </template>

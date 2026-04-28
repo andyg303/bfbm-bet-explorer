@@ -1038,7 +1038,8 @@ def get_strategy_stats(
     db: Session = Depends(get_db),
 ):
     """Get statistics grouped by strategy."""
-    if filters.staking_type and filters.staking_type != 'default':
+    use_per_bet = (filters.staking_type and filters.staking_type != 'default') or filters.deduplicate
+    if use_per_bet:
         query = db.query(Bet).filter(Bet.strategy.isnot(None))
         query = apply_filters(query, filters, user.id)
         bets = query.all()
@@ -1077,7 +1078,7 @@ def get_strategy_stats(
         for strategy, data in strategy_data.items():
             total_pl = 0
             total_staked = 0
-            total_stake_only = 0
+            total_reverse_risk = 0
             for bet in data['bets']:
                 original_stake = bet.matched_amount if bet.matched_amount else 0
                 if original_stake == 0:
@@ -1090,12 +1091,19 @@ def get_strategy_stats(
                 new_stake_or_liability = calculate_stake_or_liability(
                     bet.bet_type, new_stake, bet.avg_price_matched,
                 )
+                # Reverse-ROI denominator: the risk you'd have on the OPPOSITE side
+                # BACK -> would-be lay liability = (odds-1)*stake
+                # LAY  -> would-be back stake = stake
+                if bet.bet_type == 'BACK':
+                    reverse_risk = (bet.avg_price_matched - 1) * new_stake
+                else:
+                    reverse_risk = new_stake
                 total_pl += new_pl
                 total_staked += new_stake_or_liability
-                total_stake_only += new_stake
+                total_reverse_risk += reverse_risk
             num_bets = len(data['bets'])
             roi = (total_pl / total_staked * 100) if total_staked > 0 else 0
-            yield_pct = (total_pl / total_stake_only * 100) if total_stake_only > 0 else 0
+            yield_pct = (total_pl / total_reverse_risk * 100) if total_reverse_risk > 0 else 0
             win_rate = (data['num_wins'] / num_bets * 100) if num_bets > 0 else 0
             bsp_fill_pct = (data['num_bets_with_bsp'] / num_bets * 100) if num_bets > 0 else 0
             avg_odds = data['odds_sum'] / num_bets if num_bets > 0 else 0
@@ -1118,7 +1126,10 @@ def get_strategy_stats(
         func.count(Bet.id).label('num_bets'),
         func.sum(Bet.profit_loss).label('total_pl'),
         func.sum(case((Bet.bet_type == 'LAY', Bet.lay_liability), else_=Bet.matched_amount)).label('total_staked'),
-        func.sum(Bet.matched_amount).label('total_stake_only'),
+        func.sum(case(
+            (Bet.bet_type == 'BACK', (Bet.avg_price_matched - 1) * Bet.matched_amount),
+            else_=Bet.matched_amount,
+        )).label('total_reverse_risk'),
         func.avg(Bet.avg_price_matched).label('avg_odds'),
         func.sum(case((Bet.profit_loss > 0, 1), else_=0)).label('num_won'),
         func.sum(case((Bet.bet_type == 'BACK', 1), else_=0)).label('num_back'),
@@ -1135,13 +1146,13 @@ def get_strategy_stats(
     stats = []
     for row in results:
         total_staked = float(row.total_staked or 0)
-        total_stake_only = float(row.total_stake_only or 0)
+        total_reverse_risk = float(row.total_reverse_risk or 0)
         total_pl = float(row.total_pl or 0)
         num_bets = row.num_bets
         num_won = row.num_won
         num_with_bsp = row.num_with_bsp
         roi = (total_pl / total_staked * 100) if total_staked > 0 else 0
-        yield_pct = (total_pl / total_stake_only * 100) if total_stake_only > 0 else 0
+        yield_pct = (total_pl / total_reverse_risk * 100) if total_reverse_risk > 0 else 0
         win_rate = (num_won / num_bets * 100) if num_bets > 0 else 0
         bsp_fill_pct = (num_with_bsp / num_bets * 100) if num_bets > 0 else 0
         stats.append({
@@ -1198,7 +1209,7 @@ def get_bets(
     query = apply_filters(query, filters, user.id)
     query = query.order_by(order_clause)
 
-    if filters.staking_type and filters.staking_type != 'default':
+    if (filters.staking_type and filters.staking_type != 'default') or filters.deduplicate:
         strategy_counts = {}
         strategies_map = {}
         if filters.deduplicate:
@@ -1260,7 +1271,7 @@ def get_pl_over_time(
     db: Session = Depends(get_db),
 ):
     """Get P/L over time data."""
-    if filters.staking_type and filters.staking_type != 'default':
+    if (filters.staking_type and filters.staking_type != 'default') or filters.deduplicate:
         query = db.query(Bet).filter(Bet.start_time.isnot(None))
         query = apply_filters(query, filters, user.id)
         query = query.order_by(Bet.start_time)
@@ -1320,7 +1331,7 @@ def get_summary_stats(
     total_bets = query.count()
     num_strategies = query.with_entities(func.count(func.distinct(Bet.strategy))).scalar()
 
-    if filters.staking_type and filters.staking_type != 'default':
+    if (filters.staking_type and filters.staking_type != 'default') or filters.deduplicate:
         bets = query.all()
         if filters.deduplicate:
             bets, _, _ = deduplicate_bets(bets)
@@ -1328,7 +1339,7 @@ def get_summary_stats(
             num_strategies = len(set(b.strategy for b in bets if b.strategy))
         total_pl = 0
         total_staked = 0
-        total_stake_only = 0
+        total_reverse_risk = 0
         num_wins = 0
         for bet in bets:
             if not bet.avg_price_matched or bet.profit_loss is None or not bet.matched_amount:
@@ -1341,13 +1352,17 @@ def get_summary_stats(
             new_stake_or_liability = calculate_stake_or_liability(
                 bet.bet_type, new_stake, bet.avg_price_matched,
             )
+            if bet.bet_type == 'BACK':
+                reverse_risk = (bet.avg_price_matched - 1) * new_stake
+            else:
+                reverse_risk = new_stake
             total_pl += new_pl
             total_staked += new_stake_or_liability
-            total_stake_only += new_stake
+            total_reverse_risk += reverse_risk
             if new_pl > 0:
                 num_wins += 1
         roi = (total_pl / total_staked * 100) if total_staked > 0 else 0
-        yield_pct = (total_pl / total_stake_only * 100) if total_stake_only > 0 else 0
+        yield_pct = (total_pl / total_reverse_risk * 100) if total_reverse_risk > 0 else 0
         win_rate = (num_wins / total_bets * 100) if total_bets > 0 else 0
         return {
             "num_bets": total_bets, "num_wins": num_wins,
@@ -1360,10 +1375,13 @@ def get_summary_stats(
     total_staked = query.with_entities(
         func.sum(case((Bet.bet_type == 'BACK', Bet.matched_amount), else_=Bet.lay_liability))
     ).scalar()
-    total_stake_only = query.with_entities(func.sum(Bet.matched_amount)).scalar()
+    total_reverse_risk = query.with_entities(func.sum(case(
+        (Bet.bet_type == 'BACK', (Bet.avg_price_matched - 1) * Bet.matched_amount),
+        else_=Bet.matched_amount,
+    ))).scalar()
     num_wins = query.filter(Bet.profit_loss > 0).count()
     roi = (float(total_pl) / float(total_staked) * 100) if total_staked and total_pl else 0
-    yield_pct = (float(total_pl) / float(total_stake_only) * 100) if total_stake_only and total_pl else 0
+    yield_pct = (float(total_pl) / float(total_reverse_risk) * 100) if total_reverse_risk and total_pl else 0
     win_rate = (num_wins / total_bets * 100) if total_bets > 0 else 0
     return {
         "num_bets": total_bets, "num_wins": num_wins,
@@ -1430,7 +1448,7 @@ def get_odds_bands_profit(
     query = db.query(Bet)
     query = apply_filters(query, filters, user.id)
     bets = query.all()
-    if filters.deduplicate and filters.staking_type and filters.staking_type != 'default':
+    if filters.deduplicate:
         bets, _, _ = deduplicate_bets(bets)
 
     bands = {
@@ -1494,7 +1512,7 @@ def get_profit_curve_by_odds(
     query = db.query(Bet)
     query = apply_filters(query, filters, user.id)
     bets = query.all()
-    if filters.deduplicate and filters.staking_type and filters.staking_type != 'default':
+    if filters.deduplicate:
         bets, _, _ = deduplicate_bets(bets)
 
     # Build per-bet records with odds, pl, stake, ev
@@ -1564,7 +1582,7 @@ def get_monthly_pl(
     query = apply_filters(query, filters, user.id)
     query = query.order_by(Bet.start_time)
     bets = query.all()
-    if filters.deduplicate and filters.staking_type and filters.staking_type != 'default':
+    if filters.deduplicate:
         bets, _, _ = deduplicate_bets(bets)
 
     monthly: dict[str, float] = {}

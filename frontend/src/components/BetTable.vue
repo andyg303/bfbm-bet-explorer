@@ -14,7 +14,7 @@ const sortDirection = ref<'asc' | 'desc'>('desc')
 
 const isCustomStaking = computed(() => betStore.stakingParams.staking_type !== 'default')
 
-const isDedup = computed(() => isCustomStaking.value && betStore.stakingParams.deduplicate)
+const isDedup = computed(() => !!betStore.stakingParams.deduplicate)
 
 const bets = computed(() => betStore.bets || [])
 

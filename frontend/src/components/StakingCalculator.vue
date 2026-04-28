@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useBetStore } from '../stores/betStore'
 import LoadingOverlay from './LoadingOverlay.vue'
 
@@ -12,13 +12,6 @@ const stakingTypes = [
   { value: 'level_stake', label: 'Level Stake' },
   { value: 'level_win', label: 'Level Win' },
 ]
-
-// Reset deduplicate when switching back to default
-watch(() => betStore.stakingParams.staking_type, (val) => {
-  if (val === 'default') {
-    betStore.stakingParams.deduplicate = false
-  }
-})
 
 async function handleRecalculate() {
   recalculating.value = true
@@ -62,8 +55,10 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
 
         <div>
           <p class="font-semibold text-gray-700 dark:text-gray-300 mb-1">Deduplicate Bets</p>
-          <p>When multiple strategies trigger bets on the same market selection (e.g. backing the same horse in the same race), your results may count overlapping bets more than once. Enable deduplication to count each unique market bet only once — keeping whichever bet was placed earliest.</p>
-          <p class="mt-1">A <span class="font-medium text-teal-500"># Strats</span> column appears in the bet table showing how many strategies originally triggered each bet, helping you understand overlap between your strategies.</p>
+          <p>When multiple strategies trigger bets on the same market selection (e.g. backing the same horse in the same race), your results may count overlapping bets more than once. Enable deduplication to count each unique market bet only once.</p>
+          <p class="mt-1">Works with <span class="font-medium text-gray-700 dark:text-gray-300">any staking type</span>, including Default (Original Stakes) — useful when comparing strategies that share overlapping bets, or when one strategy was renamed over time.</p>
+          <p class="mt-1"><span class="font-medium text-amber-500">Note:</span> Only the <em>first bet by placed date</em> is kept. If duplicates have different stakes, the stake/P&amp;L from the earliest-placed bet is used (the others are discarded). The site does not merge stakes — it picks one arbitrarily by time.</p>
+          <p class="mt-1">A <span class="font-medium text-teal-500"># Strats</span> column appears in the bet table showing how many strategies originally triggered each bet, helping you see overlap.</p>
         </div>
 
         <p class="text-[10px] text-gray-500 italic">Click Recalculate to apply. All stats, charts, and the bet table update accordingly.</p>
@@ -83,8 +78,8 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
         <input v-model.number="betStore.stakingParams.base_stake" type="number" step="1" min="1" class="input-field text-xs">
       </div>
 
-      <!-- Deduplicate toggle — only when not on default stakes -->
-      <label v-if="isCustomStaking" class="flex items-center gap-2.5 cursor-pointer group">
+      <!-- Deduplicate toggle — works for any staking type -->
+      <label class="flex items-center gap-2.5 cursor-pointer group">
         <div class="relative">
           <input type="checkbox" v-model="betStore.stakingParams.deduplicate" class="sr-only peer">
           <div class="w-9 h-5 bg-gray-200 dark:bg-gray-700 rounded-full peer-checked:bg-teal-500 transition-colors"></div>

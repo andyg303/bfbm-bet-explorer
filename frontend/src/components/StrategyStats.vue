@@ -4,6 +4,7 @@ import { useBetStore } from '../stores/betStore'
 import type { StrategyStats } from '../services/api'
 import StrategyFilters from './StrategyFilters.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
+import LoadingOverlay from './LoadingOverlay.vue'
 
 const betStore = useBetStore()
 
@@ -11,6 +12,8 @@ const sortKey = ref<keyof StrategyStats>('total_pl')
 const sortDirection = ref<'asc' | 'desc'>('desc')
 const selectedStrategies = ref<Set<string>>(new Set())
 const showArchiveDialog = ref(false)
+const archiving = ref(false)
+const showMetricsHelp = ref(false)
 
 const strategyFilters = ref({
   nameSearch: '',
@@ -134,6 +137,7 @@ function clearSelection() {
   betStore.stakingParams = {
     staking_type: 'default',
     base_stake: 10,
+    deduplicate: false,
   }
   betStore.filters.strategies = []
   betStore.refreshAll()
@@ -143,6 +147,7 @@ function clearFilters() {
   betStore.stakingParams = {
     staking_type: 'default',
     base_stake: 10,
+    deduplicate: false,
   }
   strategyFilters.value = {
     nameSearch: '',
@@ -160,9 +165,14 @@ function clearFilters() {
 }
 
 async function archiveSelected() {
-  await betStore.archiveStrategies(Array.from(selectedStrategies.value))
-  selectedStrategies.value.clear()
   showArchiveDialog.value = false
+  archiving.value = true
+  try {
+    await betStore.archiveStrategies(Array.from(selectedStrategies.value))
+    selectedStrategies.value.clear()
+  } finally {
+    archiving.value = false
+  }
 }
 </script>
 
@@ -178,6 +188,13 @@ async function archiveSelected() {
             </svg>
           </div>
           <h2 class="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Strategy Performance</h2>
+          <button
+            @click="showMetricsHelp = !showMetricsHelp"
+            class="p-1 rounded-full text-gray-400 hover:text-teal-400 hover:bg-teal-500/10 transition-colors"
+            title="What do ROI % and Reverse ROI % mean?"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </button>
         </div>
         <div class="flex gap-2">
           <button 
@@ -205,6 +222,35 @@ async function archiveSelected() {
           </button>
         </div>
       </div>
+      <transition name="help-slide">
+        <div v-if="showMetricsHelp" class="mb-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 text-xs text-gray-600 dark:text-gray-400 space-y-2.5">
+          <p class="font-medium text-gray-700 dark:text-gray-300">ROI % vs Reverse ROI % — what's the difference?</p>
+
+          <p>Both measure profit relative to risk, but they use a different denominator depending on the bet side:</p>
+
+          <div class="ml-3 space-y-1.5">
+            <p><span class="font-medium text-teal-500">ROI %</span> = profit ÷ <em>what you actually risked</em>.
+              For BACK bets that's your stake. For LAY bets that's your liability — i.e. <code>(odds − 1) × stake</code>.</p>
+            <p><span class="font-medium text-teal-500">Reverse ROI %</span> = profit ÷ <em>what you would have risked on the opposite side</em>.
+              For BACK bets that's the would-be lay liability <code>(odds − 1) × stake</code>. For LAY bets that's just the stake.</p>
+          </div>
+
+          <p class="font-medium text-gray-700 dark:text-gray-300 pt-1">Why have both?</p>
+          <p>The two figures only diverge when odds are far from 2.0. At odds of exactly 2.0, ROI % and Reverse ROI % are identical for both BACK and LAY bets.</p>
+
+          <div class="p-2.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300">
+            <p class="font-medium mb-1">Worked example — lay-the-longshot strategy</p>
+            <p>1,000 lay bets at odds of 101.0, true odds 111.0 (a 9.9% edge). You expect 9 wins and 991 losses, finishing +£90.</p>
+            <ul class="mt-1 ml-4 list-disc space-y-0.5">
+              <li><span class="font-medium">ROI %</span>: £90 ÷ £100,000 risked = <span class="font-mono">0.09%</span> — looks rubbish.</li>
+              <li><span class="font-medium">Reverse ROI %</span>: £90 ÷ £1,000 stakes = <span class="font-mono">9.0%</span> — reveals the real edge.</li>
+            </ul>
+            <p class="mt-1">The same flips for low-odds BACK strategies (e.g. 1.05 shots): ROI % will look tiny, Reverse ROI % shows the underlying edge.</p>
+          </div>
+
+          <p class="text-[10px] text-gray-500 italic">Rule of thumb: ROI % tells you how efficient your bankroll usage is. Reverse ROI % tells you how much edge you have per pound of “other-side” exposure.</p>
+        </div>
+      </transition>
       <StrategyFilters v-model="strategyFilters" @clear="clearFilters" />
     </div>
     
@@ -230,11 +276,11 @@ async function archiveSelected() {
             <th @click="sort('total_pl')" class="cursor-pointer hover:text-teal-400 transition-colors">
               P/L <span v-if="sortKey === 'total_pl'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
             </th>
-            <th @click="sort('roi')" class="cursor-pointer hover:text-teal-400 transition-colors">
+            <th @click="sort('roi')" class="cursor-pointer hover:text-teal-400 transition-colors" title="Profit ÷ actual risk (BACK: stake; LAY: liability). Click the (i) icon above for examples.">
               ROI % <span v-if="sortKey === 'roi'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
             </th>
-            <th @click="sort('yield_pct')" class="cursor-pointer hover:text-teal-400 transition-colors">
-              Yield <span v-if="sortKey === 'yield_pct'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+            <th @click="sort('yield_pct')" class="cursor-pointer hover:text-teal-400 transition-colors" title="Profit ÷ opposite-side risk (BACK: would-be lay liability; LAY: stake). Useful for spotting edges at extreme odds. Click the (i) icon above for examples.">
+              Reverse ROI % <span v-if="sortKey === 'yield_pct'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
             </th>
             <th @click="sort('total_staked')" class="cursor-pointer hover:text-teal-400 transition-colors">
               Staked <span v-if="sortKey === 'total_staked'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
@@ -314,6 +360,12 @@ async function archiveSelected() {
       icon="archive"
       @confirm="archiveSelected"
       @cancel="showArchiveDialog = false"
+    />
+
+    <LoadingOverlay
+      :show="archiving"
+      title="Archiving strategies…"
+      message="Hiding the selected strategies and recalculating stats. This can take up to a minute for large data sets — please wait."
     />
   </div>
 </template>
