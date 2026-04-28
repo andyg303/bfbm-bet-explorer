@@ -188,13 +188,6 @@ async function archiveSelected() {
             </svg>
           </div>
           <h2 class="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Strategy Performance</h2>
-          <button
-            @click="showMetricsHelp = !showMetricsHelp"
-            class="p-1 rounded-full text-gray-400 hover:text-teal-400 hover:bg-teal-500/10 transition-colors"
-            title="What do ROI % and Reverse ROI % mean?"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          </button>
         </div>
         <div class="flex gap-2">
           <button 
@@ -222,38 +215,39 @@ async function archiveSelected() {
           </button>
         </div>
       </div>
-      <transition name="help-slide">
-        <div v-if="showMetricsHelp" class="mb-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 text-xs text-gray-600 dark:text-gray-400 space-y-2.5">
-          <p class="font-medium text-gray-700 dark:text-gray-300">ROI % vs Reverse ROI % — what's the difference?</p>
-
-          <p>Both measure profit relative to risk, but they use a different denominator depending on the bet side:</p>
-
-          <div class="ml-3 space-y-1.5">
-            <p><span class="font-medium text-teal-500">ROI %</span> = profit ÷ <em>what you actually risked</em>.
-              For BACK bets that's your stake. For LAY bets that's your liability — i.e. <code>(odds − 1) × stake</code>.</p>
-            <p><span class="font-medium text-teal-500">Reverse ROI %</span> = profit ÷ <em>what you would have risked on the opposite side</em>.
-              For BACK bets that's the would-be lay liability <code>(odds − 1) × stake</code>. For LAY bets that's just the stake.</p>
-          </div>
-
-          <p class="font-medium text-gray-700 dark:text-gray-300 pt-1">Why have both?</p>
-          <p>The two figures only diverge when odds are far from 2.0. At odds of exactly 2.0, ROI % and Reverse ROI % are identical for both BACK and LAY bets.</p>
-
-          <div class="p-2.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300">
-            <p class="font-medium mb-1">Worked example — lay-the-longshot strategy</p>
-            <p>1,000 lay bets at odds of 101.0, true odds 111.0 (a 9.9% edge). You expect 9 wins and 991 losses, finishing +£90.</p>
-            <ul class="mt-1 ml-4 list-disc space-y-0.5">
-              <li><span class="font-medium">ROI %</span>: £90 ÷ £100,000 risked = <span class="font-mono">0.09%</span> — looks rubbish.</li>
-              <li><span class="font-medium">Reverse ROI %</span>: £90 ÷ £1,000 stakes = <span class="font-mono">9.0%</span> — reveals the real edge.</li>
-            </ul>
-            <p class="mt-1">The same flips for low-odds BACK strategies (e.g. 1.05 shots): ROI % will look tiny, Reverse ROI % shows the underlying edge.</p>
-          </div>
-
-          <p class="text-[10px] text-gray-500 italic">Rule of thumb: ROI % tells you how efficient your bankroll usage is. Reverse ROI % tells you how much edge you have per pound of “other-side” exposure.</p>
-        </div>
-      </transition>
       <StrategyFilters v-model="strategyFilters" @clear="clearFilters" />
     </div>
     
+    <!-- ROI help row -->
+    <div class="border-t border-gray-200 dark:border-gray-800/60">
+      <button
+        @click="showMetricsHelp = !showMetricsHelp"
+        class="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left"
+      >
+        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <span class="font-medium">What is ROI % vs Reverse ROI %?</span>
+        <span class="ml-auto text-[10px] font-mono text-gray-400 dark:text-gray-600">{{ showMetricsHelp ? 'hide ▲' : 'show ▼' }}</span>
+      </button>
+      <transition name="help-slide">
+        <div v-if="showMetricsHelp" class="px-4 pb-4 pt-1 text-xs text-gray-600 dark:text-gray-400 space-y-2.5 border-t border-gray-100 dark:border-gray-800/40">
+          <p>Both measure profit relative to risk, but use a different denominator depending on bet side:</p>
+          <div class="ml-3 space-y-1.5">
+            <p><span class="font-medium text-teal-500">ROI %</span> = profit ÷ <em>what you actually risked</em>. BACK: stake. LAY: liability — <code>(odds − 1) × stake</code>.</p>
+            <p><span class="font-medium text-teal-500">Reverse ROI %</span> = profit ÷ <em>what the opposite side would have risked</em>. BACK: would-be lay liability. LAY: the stake.</p>
+          </div>
+          <p>They only diverge when odds are far from 2.0. At exactly 2.0 they are identical.</p>
+          <div class="p-2.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300">
+            <p class="font-medium mb-1">Example — lay-the-longshot (101.0 odds, +£90 profit from 1,000 bets)</p>
+            <ul class="ml-4 list-disc space-y-0.5">
+              <li><span class="font-medium">ROI %</span>: £90 ÷ £100,000 liability = <span class="font-mono">0.09%</span> — looks rubbish.</li>
+              <li><span class="font-medium">Reverse ROI %</span>: £90 ÷ £1,000 stakes = <span class="font-mono">9.0%</span> — reveals the real edge.</li>
+            </ul>
+          </div>
+          <p class="text-[10px] text-gray-500 italic">Rule of thumb: ROI % = bankroll efficiency. Reverse ROI % = edge per pound of other-side exposure.</p>
+        </div>
+      </transition>
+    </div>
+
     <!-- Table -->
     <div class="overflow-x-auto">
       <table class="data-table">

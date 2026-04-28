@@ -461,9 +461,9 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
       <div v-if="activeTab === 'dashboard'" class="px-4 py-6 sm:px-6">
         <SummaryHeader />
         <div class="mt-6 flex flex-col lg:flex-row gap-6">
-          <aside class="lg:w-72 xl:w-80 lg:flex-shrink-0" :class="{ 'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:static lg:bg-transparent lg:backdrop-blur-none': sidebarOpen }">
+          <aside class="lg:w-72 xl:w-80 lg:flex-shrink-0" :class="sidebarOpen ? 'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm' : 'hidden lg:block'">
             <div v-if="sidebarOpen" class="absolute inset-0 lg:hidden" @click="sidebarOpen = false" />
-            <div class="relative h-full lg:h-auto overflow-y-auto bg-gray-50 dark:bg-[#0b0f1a] lg:bg-transparent max-w-sm lg:max-w-none" :class="{ 'p-4 lg:p-0': sidebarOpen }">
+            <div class="relative h-full lg:h-auto overflow-y-auto bg-gray-50 dark:bg-[#0b0f1a] lg:bg-transparent max-w-sm lg:max-w-none" :class="sidebarOpen ? 'p-4' : ''">
               <FilterPanel />
               <div class="mt-6">
                 <StakingCalculator />
@@ -504,8 +504,6 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
             <span>{{ betStore.summaryStats?.num_bets?.toLocaleString() || 0 }} bets</span>
             <span class="text-gray-300 dark:text-gray-700">•</span>
             <span>{{ betStore.strategyStats?.length || 0 }} strategies</span>
-            <span class="text-gray-300 dark:text-gray-700">•</span>
-            <kbd class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 text-[10px] font-mono text-gray-400 dark:text-gray-500">⌘K</kbd>
           </div>
         </div>
       </div>

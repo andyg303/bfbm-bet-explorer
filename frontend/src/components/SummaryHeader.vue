@@ -24,7 +24,7 @@ const numStrategies = computed(() => betStore.strategyStats?.length || 0)
         <div class="w-7 h-7 rounded-lg bg-sky-500/10 flex items-center justify-center">
           <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
         </div>
-        <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Tips</div>
+        <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Bets</div>
       </div>
       <div class="mt-2.5 text-2xl font-bold text-gray-900 dark:text-white font-mono">{{ (stats.num_bets || 0).toLocaleString() }}</div>
     </div>
