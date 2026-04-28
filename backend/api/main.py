@@ -965,40 +965,55 @@ def migrate_deleted_to_archived(
     user: User = Depends(require_active_subscription),
     db: Session = Depends(get_db),
 ):
-    """Migrate old is_deleted strategy-level soft-deletes into is_archived."""
-    all_strategies = (
-        db.query(Bet.strategy)
+    """Migrate old is_deleted strategy-level soft-deletes into is_archived.
+
+    This used to run an N+1 sweep over every strategy on every dashboard load,
+    which became extremely slow (20s+) for users with many bets. It is now:
+      1. A fast EXISTS check that returns immediately when there is nothing to
+         migrate (the common case for any user past their first session).
+      2. A single GROUP BY query to find strategies where every bet is
+         soft-deleted, followed by a single bulk UPDATE.
+    """
+    # Fast path — bail out immediately if the user has no soft-deleted bets at all.
+    has_deleted = (
+        db.query(Bet.id)
+        .filter(Bet.user_id == user.id, Bet.is_deleted == True)  # noqa: E712
+        .first()
+    )
+    if not has_deleted:
+        return {"ok": True, "migrated_strategies": [], "migrated_bets": 0}
+
+    # Find all strategies where 100% of bets are soft-deleted, in a single query.
+    rows = (
+        db.query(
+            Bet.strategy,
+            func.count(Bet.id).label("total"),
+            func.sum(case((Bet.is_deleted == True, 1), else_=0)).label("deleted"),  # noqa: E712
+        )
         .filter(Bet.user_id == user.id, Bet.strategy.isnot(None))
-        .distinct()
+        .group_by(Bet.strategy)
         .all()
     )
-    migrated_strategies = []
-    migrated_count = 0
-    for (strategy,) in all_strategies:
-        total = db.query(Bet).filter(
-            Bet.user_id == user.id, Bet.strategy == strategy
-        ).count()
-        deleted = db.query(Bet).filter(
+    targets = [r.strategy for r in rows if r.total > 0 and r.total == (r.deleted or 0)]
+    if not targets:
+        return {"ok": True, "migrated_strategies": [], "migrated_bets": 0}
+
+    migrated_count = (
+        db.query(Bet)
+        .filter(
             Bet.user_id == user.id,
-            Bet.strategy == strategy,
+            Bet.strategy.in_(targets),
             Bet.is_deleted == True,  # noqa: E712
-        ).count()
-        if total > 0 and total == deleted:
-            count = (
-                db.query(Bet)
-                .filter(
-                    Bet.user_id == user.id,
-                    Bet.strategy == strategy,
-                    Bet.is_deleted == True,  # noqa: E712
-                )
-                .update({Bet.is_archived: True, Bet.is_deleted: False}, synchronize_session='fetch')
-            )
-            migrated_count += count
-            migrated_strategies.append(strategy)
+        )
+        .update(
+            {Bet.is_archived: True, Bet.is_deleted: False},
+            synchronize_session=False,
+        )
+    )
     db.commit()
     return {
         "ok": True,
-        "migrated_strategies": migrated_strategies,
+        "migrated_strategies": targets,
         "migrated_bets": migrated_count,
     }
 
@@ -1445,6 +1460,60 @@ def get_odds_bands_profit(
     db: Session = Depends(get_db),
 ):
     """Get profit by odds bands."""
+    band_defs = [
+        ("1.01-2.00", 1.01, 2.00),
+        ("2.01-3.00", 2.01, 3.00),
+        ("3.01-5.00", 3.01, 5.00),
+        ("5.01-10.00", 5.01, 10.00),
+        ("10.01+", 10.01, float("inf")),
+    ]
+
+    custom_staking = bool(filters.staking_type and filters.staking_type != "default")
+
+    # ── Fast path ─────────────────────────────────────────────────────────
+    # No custom staking and no de-duplication → aggregate entirely in SQL
+    # instead of pulling every Bet row into Python. This is by far the most
+    # common dashboard call and was timing out for users with large histories.
+    if not custom_staking and not filters.deduplicate:
+        stake_expr = case(
+            (Bet.bet_type == "LAY", func.coalesce(Bet.lay_liability, 0.0)),
+            else_=func.coalesce(Bet.matched_amount, 0.0),
+        )
+        band_expr = case(
+            (Bet.avg_price_matched.between(1.01, 2.00), "1.01-2.00"),
+            (Bet.avg_price_matched.between(2.0001, 3.00), "2.01-3.00"),
+            (Bet.avg_price_matched.between(3.0001, 5.00), "3.01-5.00"),
+            (Bet.avg_price_matched.between(5.0001, 10.00), "5.01-10.00"),
+            (Bet.avg_price_matched > 10.00, "10.01+"),
+            else_=None,
+        )
+        q = db.query(
+            band_expr.label("band"),
+            func.count(Bet.id).label("num_bets"),
+            func.coalesce(func.sum(Bet.profit_loss), 0.0).label("total_pl"),
+            func.coalesce(func.sum(stake_expr), 0.0).label("total_staked"),
+        )
+        q = apply_filters(q, filters, user.id)
+        q = q.filter(Bet.avg_price_matched.isnot(None))
+        rows = q.group_by(band_expr).all()
+        by_band = {r.band: r for r in rows if r.band is not None}
+
+        result = []
+        for band_name, _mn, _mx in band_defs:
+            r = by_band.get(band_name)
+            num_bets = int(r.num_bets) if r else 0
+            total_pl = float(r.total_pl) if r else 0.0
+            total_staked = float(r.total_staked) if r else 0.0
+            roi = (total_pl / total_staked * 100) if total_staked > 0 else 0
+            result.append({
+                "band": band_name, "num_bets": num_bets,
+                "total_pl": round(total_pl, 2),
+                "total_staked": round(total_staked, 2),
+                "roi": round(roi, 2),
+            })
+        return result
+
+    # ── Slow path (custom staking or de-duplication) ──────────────────────
     query = db.query(Bet)
     query = apply_filters(query, filters, user.id)
     bets = query.all()
@@ -1452,14 +1521,11 @@ def get_odds_bands_profit(
         bets, _, _ = deduplicate_bets(bets)
 
     bands = {
-        "1.01-2.00": {"min": 1.01, "max": 2.00, "bets": [], "total_pl": 0, "total_staked": 0},
-        "2.01-3.00": {"min": 2.01, "max": 3.00, "bets": [], "total_pl": 0, "total_staked": 0},
-        "3.01-5.00": {"min": 3.01, "max": 5.00, "bets": [], "total_pl": 0, "total_staked": 0},
-        "5.01-10.00": {"min": 5.01, "max": 10.00, "bets": [], "total_pl": 0, "total_staked": 0},
-        "10.01+": {"min": 10.01, "max": float('inf'), "bets": [], "total_pl": 0, "total_staked": 0},
+        name: {"min": mn, "max": mx, "bets": [], "total_pl": 0, "total_staked": 0}
+        for name, mn, mx in band_defs
     }
 
-    if filters.staking_type and filters.staking_type != 'default':
+    if custom_staking:
         for bet in bets:
             if not bet.avg_price_matched or bet.profit_loss is None or not bet.matched_amount:
                 continue
@@ -1578,34 +1644,67 @@ def get_monthly_pl(
     db: Session = Depends(get_db),
 ):
     """Get monthly P/L in year×month grid format, plus key statistics."""
-    query = db.query(Bet).filter(Bet.start_time.isnot(None))
-    query = apply_filters(query, filters, user.id)
-    query = query.order_by(Bet.start_time)
-    bets = query.all()
-    if filters.deduplicate:
-        bets, _, _ = deduplicate_bets(bets)
+    custom_staking = bool(filters.staking_type and filters.staking_type != "default")
 
     monthly: dict[str, float] = {}
-    daily_buckets: dict[str, float] = {}
-    for bet in bets:
-        if bet.profit_loss is None or bet.start_time is None:
-            continue
-        if filters.staking_type and filters.staking_type != 'default':
-            if not bet.avg_price_matched or not bet.matched_amount:
-                continue
-            new_stake = calculate_new_stake(
-                bet.bet_type, bet.matched_amount, bet.avg_price_matched,
-                filters.staking_type, filters.base_stake,
-            )
-            pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
-        else:
-            pl = bet.profit_loss
-        month_key = bet.start_time.strftime("%Y-%m")
-        monthly[month_key] = monthly.get(month_key, 0) + pl
-        day_key = str(bet.start_time.date())
-        daily_buckets[day_key] = daily_buckets.get(day_key, 0) + pl
+    daily_pls: list[float] = []
 
-    daily_pls = [daily_buckets[k] for k in sorted(daily_buckets.keys())]
+    if not custom_staking and not filters.deduplicate:
+        # ── Fast path: aggregate monthly + daily totals directly in Postgres ──
+        month_expr = func.to_char(Bet.start_time, "YYYY-MM")
+        day_expr = func.date(Bet.start_time)
+
+        q_month = db.query(
+            month_expr.label("month"),
+            func.coalesce(func.sum(Bet.profit_loss), 0.0).label("pl"),
+        )
+        q_month = apply_filters(q_month, filters, user.id)
+        q_month = q_month.filter(
+            Bet.start_time.isnot(None), Bet.profit_loss.isnot(None)
+        )
+        for r in q_month.group_by(month_expr).all():
+            monthly[r.month] = float(r.pl)
+
+        q_day = db.query(
+            day_expr.label("d"),
+            func.coalesce(func.sum(Bet.profit_loss), 0.0).label("pl"),
+        )
+        q_day = apply_filters(q_day, filters, user.id)
+        q_day = q_day.filter(
+            Bet.start_time.isnot(None), Bet.profit_loss.isnot(None)
+        )
+        daily_pls = [
+            float(r.pl) for r in q_day.group_by(day_expr).order_by(day_expr).all()
+        ]
+    else:
+        # ── Slow path: per-bet recalculation needed (custom staking / dedupe) ──
+        query = db.query(Bet).filter(Bet.start_time.isnot(None))
+        query = apply_filters(query, filters, user.id)
+        query = query.order_by(Bet.start_time)
+        bets = query.all()
+        if filters.deduplicate:
+            bets, _, _ = deduplicate_bets(bets)
+
+        daily_buckets: dict[str, float] = {}
+        for bet in bets:
+            if bet.profit_loss is None or bet.start_time is None:
+                continue
+            if custom_staking:
+                if not bet.avg_price_matched or not bet.matched_amount:
+                    continue
+                new_stake = calculate_new_stake(
+                    bet.bet_type, bet.matched_amount, bet.avg_price_matched,
+                    filters.staking_type, filters.base_stake,
+                )
+                pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
+            else:
+                pl = bet.profit_loss
+            month_key = bet.start_time.strftime("%Y-%m")
+            monthly[month_key] = monthly.get(month_key, 0) + pl
+            day_key = str(bet.start_time.date())
+            daily_buckets[day_key] = daily_buckets.get(day_key, 0) + pl
+
+        daily_pls = [daily_buckets[k] for k in sorted(daily_buckets.keys())]
 
     if not monthly:
         return {

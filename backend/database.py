@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Index, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Index, ForeignKey, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from dotenv import load_dotenv
@@ -102,6 +102,18 @@ class Bet(Base):
         Index('idx_bet_type_status', 'bet_type', 'status'),
         Index('idx_user_bet_id', 'user_id', 'bet_id', unique=True),
         Index('idx_user_strategy', 'user_id', 'strategy'),
+        # Partial composite indexes targeting the hot dashboard query pattern
+        # (user_id = ? AND is_deleted = false AND is_archived = false).
+        # Created in production by scripts/add_performance_indexes.py — listed
+        # here so fresh installs via init_db() pick them up too.
+        Index(
+            'idx_bets_user_active', 'user_id',
+            postgresql_where=text('is_deleted = false AND is_archived = false'),
+        ),
+        Index(
+            'idx_bets_user_starttime', 'user_id', 'start_time',
+            postgresql_where=text('is_deleted = false AND is_archived = false'),
+        ),
     )
 
 

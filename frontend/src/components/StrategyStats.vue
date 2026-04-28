@@ -239,7 +239,7 @@ async function archiveSelected() {
           <div class="p-2.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300">
             <p class="font-medium mb-1">Example — lay-the-longshot (101.0 odds, +£90 profit from 1,000 bets)</p>
             <ul class="ml-4 list-disc space-y-0.5">
-              <li><span class="font-medium">ROI %</span>: £90 ÷ £100,000 liability = <span class="font-mono">0.09%</span> — looks rubbish.</li>
+              <li><span class="font-medium">ROI %</span>: £90 ÷ £100,000 liability = <span class="font-mono">0.09%</span> — does not look very promising!</li>
               <li><span class="font-medium">Reverse ROI %</span>: £90 ÷ £1,000 stakes = <span class="font-mono">9.0%</span> — reveals the real edge.</li>
             </ul>
           </div>
