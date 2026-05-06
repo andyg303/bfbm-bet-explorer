@@ -10,6 +10,12 @@ from database import Bet, User
 from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability
 
 
+_AUS_NZ_HOME_PREFIXES = (
+    'australia v',
+    'new zealand v',
+)
+
+
 def is_aus_nz_bet(bet: Bet) -> bool:
     """Return True if this bet belongs to an AUS/NZ market."""
     if bet.country_code and bet.country_code.upper() in ('AU', 'AUS', 'NZ', 'NZL'):
@@ -18,9 +24,15 @@ def is_aus_nz_bet(bet: Bet) -> bool:
         comp_lower = bet.competition.lower()
         if 'australia' in comp_lower or 'new zealand' in comp_lower:
             return True
-    for field in (bet.description, bet.event, bet.market_name):
+    for field in (bet.description, bet.event):
         if field and ('(AUS)' in field or '(NZL)' in field or '(NZ)' in field):
             return True
+    # International fixtures played in AUS/NZ: "Australia v ..." or "New Zealand v ..."
+    for field in (bet.description, bet.competition):
+        if field:
+            field_lower = field.lower()
+            if any(field_lower.startswith(prefix) for prefix in _AUS_NZ_HOME_PREFIXES):
+                return True
     return False
 
 
