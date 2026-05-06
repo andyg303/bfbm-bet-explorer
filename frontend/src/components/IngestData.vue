@@ -53,7 +53,7 @@ function startFunnyMessages() {
 }
 
 function onProgressUpdate(processed: number) {
-  if (processed - lastPhraseAtRow >= 1000) {
+  if (processed - lastPhraseAtRow >= 5000) {
     funnyMessage.value = pickPhrase()
     lastPhraseAtRow = processed
   }

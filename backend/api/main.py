@@ -37,6 +37,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db, SessionLocal, Bet, User, IngestionLog, init_db
 from scripts.ingest_bets import ingest_csv_file, sanitize_strategy_name, read_csv, normalize_columns
 from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability, deduplicate_bets
+from api.commission import apply_commission_for_user, calculate_restaked_commission_map
 from api.auth import (
     get_current_user,
     get_password_hash,
@@ -141,6 +142,14 @@ async def lifespan(app):
         if 'password_reset_token_id' not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN password_reset_token_id VARCHAR"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_password_reset_token_id ON users (password_reset_token_id)"))
+        if 'commission_rate' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN commission_rate FLOAT DEFAULT 2.0 NOT NULL"))
+        if 'commission_rate_aus_nz' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN commission_rate_aus_nz FLOAT DEFAULT 5.0 NOT NULL"))
+
+        # ── Bet commission column ──
+        if 'commission_paid' not in columns:
+            conn.execute(text("ALTER TABLE bets ADD COLUMN commission_paid FLOAT DEFAULT 0.0"))
 
         # ── IngestionLog table ──
         if not insp.has_table('ingestion_logs'):
@@ -344,6 +353,8 @@ def _user_dict(user: User) -> dict:
         "subscription_expires": (
             user.subscription_expires.isoformat() if user.subscription_expires else None
         ),
+        "commission_rate": user.commission_rate if user.commission_rate is not None else 2.0,
+        "commission_rate_aus_nz": user.commission_rate_aus_nz if user.commission_rate_aus_nz is not None else 5.0,
     }
 
 
@@ -690,6 +701,48 @@ def reset_password(request: Request, req: ResetPasswordRequest, db: Session = De
 # ═══════════════════════════════════════════════════════════════════════════
 # Data endpoints — all require authentication + active subscription
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+class CommissionSettingsRequest(BaseModel):
+    commission_rate: float
+    commission_rate_aus_nz: float
+
+
+@app.post("/user/update-commission")
+def update_commission_settings(
+    req: CommissionSettingsRequest,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Update the user's commission rate settings."""
+    if not (0 <= req.commission_rate <= 100):
+        raise HTTPException(status_code=400, detail="commission_rate must be between 0 and 100")
+    if not (0 <= req.commission_rate_aus_nz <= 100):
+        raise HTTPException(status_code=400, detail="commission_rate_aus_nz must be between 0 and 100")
+    user.commission_rate = req.commission_rate
+    user.commission_rate_aus_nz = req.commission_rate_aus_nz
+    db.commit()
+    db.refresh(user)
+    return {"ok": True, "user": _user_dict(user)}
+
+
+@app.post("/recalculate-commission")
+def recalculate_commission(
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Recalculate commission for all of this user's active bets.
+
+    Algorithm:
+    1. Restore original P/L by adding back any previously-stored commission_paid.
+    2. Group all active (non-deleted, non-archived) bets by (market_key, strategy).
+    3. For each group, sum net P/L; if positive apply the appropriate commission rate
+       (AUS/NZ or global) to the net profit and attribute it to the first positively-
+       settled bet in the group, reducing that bet's profit_loss by the commission.
+    4. All other bets in a group carry commission_paid = 0.
+    """
+    bets_processed = apply_commission_for_user(db, user)
+    return {"ok": True, "bets_processed": bets_processed}
 
 @app.delete("/bets/{bet_id}")
 def delete_bet(
@@ -1062,9 +1115,11 @@ def get_strategy_stats(
         if filters.deduplicate:
             bets, _, _ = deduplicate_bets(bets)
 
+        restaked = calculate_restaked_commission_map(bets, filters, user)
+
         strategy_data = {}
         for bet in bets:
-            if not bet.strategy or not bet.avg_price_matched or bet.profit_loss is None:
+            if not bet.strategy or bet.id not in restaked:
                 continue
             if bet.strategy not in strategy_data:
                 strategy_data[bet.strategy] = {
@@ -1077,7 +1132,7 @@ def get_strategy_stats(
                 strategy_data[bet.strategy]['num_back'] += 1
             else:
                 strategy_data[bet.strategy]['num_lay'] += 1
-            if bet.profit_loss > 0:
+            if restaked[bet.id]["pl"] > 0:
                 strategy_data[bet.strategy]['num_wins'] += 1
             if bet.bsp and bet.bsp > 0:
                 strategy_data[bet.strategy]['num_bets_with_bsp'] += 1
@@ -1095,26 +1150,18 @@ def get_strategy_stats(
             total_staked = 0
             total_reverse_risk = 0
             for bet in data['bets']:
-                original_stake = bet.matched_amount if bet.matched_amount else 0
-                if original_stake == 0:
+                recalc = restaked.get(bet.id)
+                if not recalc:
                     continue
-                new_stake = calculate_new_stake(
-                    bet.bet_type, original_stake, bet.avg_price_matched,
-                    filters.staking_type, filters.base_stake,
-                )
-                new_pl = calculate_new_pl(original_stake, bet.profit_loss, new_stake)
-                new_stake_or_liability = calculate_stake_or_liability(
-                    bet.bet_type, new_stake, bet.avg_price_matched,
-                )
                 # Reverse-ROI denominator: the risk you'd have on the OPPOSITE side
                 # BACK -> would-be lay liability = (odds-1)*stake
                 # LAY  -> would-be back stake = stake
                 if bet.bet_type == 'BACK':
-                    reverse_risk = (bet.avg_price_matched - 1) * new_stake
+                    reverse_risk = (bet.avg_price_matched - 1) * recalc["stake"]
                 else:
-                    reverse_risk = new_stake
-                total_pl += new_pl
-                total_staked += new_stake_or_liability
+                    reverse_risk = recalc["stake"]
+                total_pl += recalc["pl"]
+                total_staked += recalc["liability"]
                 total_reverse_risk += reverse_risk
             num_bets = len(data['bets'])
             roi = (total_pl / total_staked * 100) if total_staked > 0 else 0
@@ -1234,10 +1281,12 @@ def get_bets(
             deduped.sort(key=lambda b: getattr(b, sort_attr, None) or (datetime.min if sort_attr in ('start_time', 'settled_date', 'placed_date') else ''), reverse=(sort_dir == 'desc'))
             total = len(deduped)
             bets = deduped[skip:skip + limit]
+            restaked = calculate_restaked_commission_map(deduped, filters, user)
         else:
-            total = query.count()
-            bets = query.offset(skip).limit(limit).all()
-
+            all_bets = query.all()
+            total = len(all_bets)
+            bets = all_bets[skip:skip + limit]
+            restaked = calculate_restaked_commission_map(all_bets, filters, user)
         bet_list = []
         for bet in bets:
             bet_dict = {
@@ -1255,19 +1304,14 @@ def get_bets(
                 "market_type": bet.market_type, "lay_liability": bet.lay_liability,
                 "country_code": bet.country_code, "event": bet.event,
                 "competition": bet.competition, "price_requested": bet.price_requested,
+                "commission_paid": bet.commission_paid or 0.0,
             }
-            if bet.avg_price_matched and bet.profit_loss is not None and bet.matched_amount:
-                new_stake = calculate_new_stake(
-                    bet.bet_type, bet.matched_amount, bet.avg_price_matched,
-                    filters.staking_type, filters.base_stake,
-                )
-                new_pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
-                new_liability = calculate_stake_or_liability(
-                    bet.bet_type, new_stake, bet.avg_price_matched,
-                )
-                bet_dict["recalculated_stake"] = round(new_stake, 2)
-                bet_dict["recalculated_pl"] = round(new_pl, 2)
-                bet_dict["recalculated_liability"] = round(new_liability, 2)
+            recalc = restaked.get(bet.id)
+            if recalc:
+                bet_dict["recalculated_stake"] = round(recalc["stake"], 2)
+                bet_dict["recalculated_pl"] = round(recalc["pl"], 2)
+                bet_dict["recalculated_liability"] = round(recalc["liability"], 2)
+                bet_dict["recalculated_commission_paid"] = round(recalc["commission_paid"], 2)
             if filters.deduplicate:
                 bet_dict["strategy_count"] = strategy_counts.get(bet.id, 1)
                 bet_dict["strategies_triggered"] = strategies_map.get(bet.id, [bet.strategy] if bet.strategy else [])
@@ -1293,19 +1337,16 @@ def get_pl_over_time(
         bets = query.all()
         if filters.deduplicate:
             bets, _, _ = deduplicate_bets(bets)
+        restaked = calculate_restaked_commission_map(bets, filters, user)
         daily_data = {}
         for bet in bets:
-            if not bet.avg_price_matched or bet.profit_loss is None or not bet.matched_amount:
+            recalc = restaked.get(bet.id)
+            if not recalc:
                 continue
             date_key = str(bet.start_time.date())
             if date_key not in daily_data:
                 daily_data[date_key] = 0
-            new_stake = calculate_new_stake(
-                bet.bet_type, bet.matched_amount, bet.avg_price_matched,
-                filters.staking_type, filters.base_stake,
-            )
-            new_pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
-            daily_data[date_key] += new_pl
+            daily_data[date_key] += recalc["pl"]
         cumulative_pl = 0
         data = []
         for date in sorted(daily_data.keys()):
@@ -1352,29 +1393,23 @@ def get_summary_stats(
             bets, _, _ = deduplicate_bets(bets)
             total_bets = len(bets)
             num_strategies = len(set(b.strategy for b in bets if b.strategy))
+        restaked = calculate_restaked_commission_map(bets, filters, user)
         total_pl = 0
         total_staked = 0
         total_reverse_risk = 0
         num_wins = 0
         for bet in bets:
-            if not bet.avg_price_matched or bet.profit_loss is None or not bet.matched_amount:
+            recalc = restaked.get(bet.id)
+            if not recalc:
                 continue
-            new_stake = calculate_new_stake(
-                bet.bet_type, bet.matched_amount, bet.avg_price_matched,
-                filters.staking_type, filters.base_stake,
-            )
-            new_pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
-            new_stake_or_liability = calculate_stake_or_liability(
-                bet.bet_type, new_stake, bet.avg_price_matched,
-            )
             if bet.bet_type == 'BACK':
-                reverse_risk = (bet.avg_price_matched - 1) * new_stake
+                reverse_risk = (bet.avg_price_matched - 1) * recalc["stake"]
             else:
-                reverse_risk = new_stake
-            total_pl += new_pl
-            total_staked += new_stake_or_liability
+                reverse_risk = recalc["stake"]
+            total_pl += recalc["pl"]
+            total_staked += recalc["liability"]
             total_reverse_risk += reverse_risk
-            if new_pl > 0:
+            if recalc["pl"] > 0:
                 num_wins += 1
         roi = (total_pl / total_staked * 100) if total_staked > 0 else 0
         yield_pct = (total_pl / total_reverse_risk * 100) if total_reverse_risk > 0 else 0
@@ -1420,28 +1455,24 @@ def recalculate_staking(
     bets = query.all()
     if filters.deduplicate:
         bets, _, _ = deduplicate_bets(bets)
+    restaked = calculate_restaked_commission_map(bets, filters, user)
     recalculated_bets = []
     total_pl = 0
     total_staked = 0
     for bet in bets:
-        original_stake = bet.matched_amount or 0
-        avg_price = bet.avg_price_matched or 0
-        if original_stake == 0 or avg_price == 0:
+        recalc = restaked.get(bet.id)
+        if not recalc:
             continue
-        new_stake = calculate_new_stake(
-            bet.bet_type, original_stake, avg_price,
-            filters.staking_type, filters.base_stake,
-        )
-        new_pl = calculate_new_pl(original_stake, bet.profit_loss or 0, new_stake)
-        stake_or_liability = calculate_stake_or_liability(bet.bet_type, new_stake, avg_price)
-        total_pl += new_pl
-        total_staked += stake_or_liability
+        original_stake = bet.matched_amount or 0
+        total_pl += recalc["pl"]
+        total_staked += recalc["liability"]
         recalculated_bets.append({
             "bet_id": bet.bet_id,
             "original_stake": round(original_stake, 2),
-            "new_stake": round(new_stake, 2),
+            "new_stake": round(recalc["stake"], 2),
             "original_pl": round(bet.profit_loss or 0, 2),
-            "new_pl": round(new_pl, 2),
+            "new_pl": round(recalc["pl"], 2),
+            "new_commission_paid": round(recalc["commission_paid"], 2),
         })
     roi = (total_pl / total_staked * 100) if total_staked > 0 else 0
     return {
@@ -1519,6 +1550,7 @@ def get_odds_bands_profit(
     bets = query.all()
     if filters.deduplicate:
         bets, _, _ = deduplicate_bets(bets)
+    restaked = calculate_restaked_commission_map(bets, filters, user) if custom_staking else {}
 
     bands = {
         name: {"min": mn, "max": mx, "bets": [], "total_pl": 0, "total_staked": 0}
@@ -1527,20 +1559,15 @@ def get_odds_bands_profit(
 
     if custom_staking:
         for bet in bets:
-            if not bet.avg_price_matched or bet.profit_loss is None or not bet.matched_amount:
+            recalc = restaked.get(bet.id)
+            if not bet.avg_price_matched or not recalc:
                 continue
             odds = bet.avg_price_matched
-            new_stake = calculate_new_stake(
-                bet.bet_type, bet.matched_amount, bet.avg_price_matched,
-                filters.staking_type, filters.base_stake,
-            )
-            new_pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
-            stake_or_liability = calculate_stake_or_liability(bet.bet_type, new_stake, bet.avg_price_matched)
             for band_name, band_data in bands.items():
                 if band_data["min"] <= odds <= band_data["max"]:
                     band_data["bets"].append(bet)
-                    band_data["total_pl"] += new_pl
-                    band_data["total_staked"] += stake_or_liability
+                    band_data["total_pl"] += recalc["pl"]
+                    band_data["total_staked"] += recalc["liability"]
                     break
     else:
         for bet in bets:
@@ -1580,6 +1607,7 @@ def get_profit_curve_by_odds(
     bets = query.all()
     if filters.deduplicate:
         bets, _, _ = deduplicate_bets(bets)
+    restaked = calculate_restaked_commission_map(bets, filters, user) if filters.staking_type and filters.staking_type != 'default' else {}
 
     # Build per-bet records with odds, pl, stake, ev
     records = []
@@ -1591,12 +1619,11 @@ def get_profit_curve_by_odds(
             continue
 
         if filters.staking_type and filters.staking_type != 'default':
-            new_stake = calculate_new_stake(
-                bet.bet_type, bet.matched_amount, bet.avg_price_matched,
-                filters.staking_type, filters.base_stake,
-            )
-            pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
-            stake = calculate_stake_or_liability(bet.bet_type, new_stake, bet.avg_price_matched)
+            recalc = restaked.get(bet.id)
+            if not recalc:
+                continue
+            pl = recalc["pl"]
+            stake = recalc["liability"]
         else:
             pl = bet.profit_loss or 0
             stake = bet.lay_liability if bet.bet_type == 'LAY' else (bet.matched_amount or 0)
@@ -1684,19 +1711,17 @@ def get_monthly_pl(
         bets = query.all()
         if filters.deduplicate:
             bets, _, _ = deduplicate_bets(bets)
+        restaked = calculate_restaked_commission_map(bets, filters, user) if custom_staking else {}
 
         daily_buckets: dict[str, float] = {}
         for bet in bets:
             if bet.profit_loss is None or bet.start_time is None:
                 continue
             if custom_staking:
-                if not bet.avg_price_matched or not bet.matched_amount:
+                recalc = restaked.get(bet.id)
+                if not recalc:
                     continue
-                new_stake = calculate_new_stake(
-                    bet.bet_type, bet.matched_amount, bet.avg_price_matched,
-                    filters.staking_type, filters.base_stake,
-                )
-                pl = calculate_new_pl(bet.matched_amount, bet.profit_loss, new_stake)
+                pl = recalc["pl"]
             else:
                 pl = bet.profit_loss
             month_key = bet.start_time.strftime("%Y-%m")
@@ -1834,6 +1859,17 @@ async def ingest_csv(
             result = ingest_csv_file(
                 tmp_path, db, user_id=user_id, progress_callback=on_progress
             )
+            event_queue.put({
+                'type': 'progress',
+                'processed': total_rows,
+                'total': total_rows,
+                'inserted': result['inserted'],
+                'updated': result['updated'],
+                'skipped': result['skipped'],
+                'phase': 'Applying commission using your saved settings…',
+            })
+            db_user = db.query(User).filter(User.id == user_id).first()
+            commission_bets_processed = apply_commission_for_user(db, db_user) if db_user else 0
             total_bets = db.query(Bet).filter(Bet.user_id == user_id).count()
             warnings_list = result.get('warnings', [])
             log_entry = IngestionLog(
@@ -1856,6 +1892,7 @@ async def ingest_csv(
                 'skipped': result['skipped'],
                 'warnings': warnings_list,
                 'total_bets_in_db': total_bets,
+                'commission_bets_processed': commission_bets_processed,
             })
         except Exception as e:
             try:

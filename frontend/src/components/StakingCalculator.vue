@@ -49,7 +49,7 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
           <ul class="space-y-1 ml-3 list-disc">
             <li><span class="font-medium text-gray-700 dark:text-gray-300">Default</span> — Uses the original stakes from your bet data as-is.</li>
             <li><span class="font-medium text-gray-700 dark:text-gray-300">Level Stake</span> — Every bet uses the same fixed stake, regardless of odds. Set your amount in the Base Stake field.</li>
-            <li><span class="font-medium text-gray-700 dark:text-gray-300">Level Win</span> — For BACK bets, uses the base stake. For LAY bets, the stake is adjusted so you win a fixed amount equal to the base stake if the selection loses.</li>
+            <li><span class="font-medium text-gray-700 dark:text-gray-300">Level Win</span> — The stake is adjusted so the potential win/loss exposure is always the Base Win amount. For BACK bets: profit if wins = Base Win (stake = base win ÷ (odds − 1)). For LAY bets: liability if loses = Base Win (lay stake = base win ÷ (odds − 1)).</li>
           </ul>
         </div>
 
@@ -74,7 +74,7 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
       </div>
 
       <div v-if="isCustomStaking">
-        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Base Stake (£)</label>
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">{{ betStore.stakingParams.staking_type === 'level_win' ? 'Base Win (£)' : 'Base Stake (£)' }}</label>
         <input v-model.number="betStore.stakingParams.base_stake" type="number" step="1" min="1" class="input-field text-xs">
       </div>
 

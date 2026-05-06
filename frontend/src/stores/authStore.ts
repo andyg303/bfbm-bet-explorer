@@ -10,6 +10,8 @@ interface AuthUser {
   subscription_status?: string  // inactive | active | cancelled | expired
   subscription_plan?: string    // 6month | 12month
   subscription_expires?: string // ISO date
+  commission_rate?: number      // global commission % (default 2.0)
+  commission_rate_aus_nz?: number // AUS/NZ commission % (default 5.0)
 }
 
 interface TokenPair {
@@ -277,6 +279,41 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function updateCommissionSettings(commissionRate: number, commissionRateAusNz: number) {
+    loading.value = true
+    error.value = null
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/user/update-commission`,
+        { commission_rate: commissionRate, commission_rate_aus_nz: commissionRateAusNz },
+        { headers: { Authorization: `Bearer ${accessToken.value}` } },
+      )
+      if (res.data.user && user.value) {
+        user.value = { ...user.value, ...res.data.user }
+        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user.value))
+      }
+    } catch (e) {
+      error.value = extractError(e)
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function recalculateCommission(): Promise<{ bets_processed: number }> {
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/recalculate-commission`,
+        {},
+        { headers: { Authorization: `Bearer ${accessToken.value}` } },
+      )
+      return res.data
+    } catch (e) {
+      error.value = extractError(e)
+      throw e
+    }
+  }
+
   function logout() {
     clearTokens()
   }
@@ -304,5 +341,7 @@ export const useAuthStore = defineStore('auth', () => {
     refreshUserProfile,
     logout,
     clearTokens,
+    updateCommissionSettings,
+    recalculateCommission,
   }
 })

@@ -43,6 +43,10 @@ class User(Base):
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)
 
+    # Commission settings
+    commission_rate = Column(Float, default=2.0, nullable=False, server_default='2.0')
+    commission_rate_aus_nz = Column(Float, default=5.0, nullable=False, server_default='5.0')
+
     # Subscription / Stripe
     subscription_status = Column(String, default="inactive", nullable=False)  # inactive | active | cancelled | expired
     subscription_plan = Column(String, nullable=True)  # 6month | 12month
@@ -92,6 +96,7 @@ class Bet(Base):
     bsp_diff_absolute = Column(Float)
     bsp_diff_percentage = Column(Float)
     bsp_diff_probability = Column(Float)
+    commission_paid = Column(Float, default=0.0, nullable=True)
     is_deleted = Column(Boolean, default=False, index=True)
     is_archived = Column(Boolean, default=False, index=True)
 

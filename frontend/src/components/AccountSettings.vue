@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/authStore'
+import { useBetStore } from '../stores/betStore'
 
 const auth = useAuthStore()
+const betStore = useBetStore()
 
 const emit = defineEmits<{
   (e: 'navigate', page: string): void
@@ -24,6 +26,15 @@ const passwordSuccess = ref('')
 const passwordError = ref('')
 const passwordSaving = ref(false)
 const showPassword = ref(false)
+
+// ─── Commission form ─────────────────────────────────────────────────────────
+const commissionRate = ref(2.0)
+const commissionRateAusNz = ref(5.0)
+const commissionSaving = ref(false)
+const commissionRecalculating = ref(false)
+const commissionSuccess = ref('')
+const commissionError = ref('')
+const showCommissionHelp = ref(false)
 
 const passwordStrength = computed(() => {
   const p = newPassword.value
@@ -59,6 +70,8 @@ onMounted(async () => {
   if (auth.user) {
     displayName.value = auth.user.display_name || ''
     email.value = auth.user.email || ''
+    commissionRate.value = auth.user.commission_rate ?? 2.0
+    commissionRateAusNz.value = auth.user.commission_rate_aus_nz ?? 5.0
   }
 })
 
@@ -106,6 +119,40 @@ async function handleChangePassword() {
     passwordError.value = auth.error || 'Failed to change password'
   } finally {
     passwordSaving.value = false
+  }
+}
+
+async function handleSaveCommission() {
+  commissionError.value = ''
+  commissionSuccess.value = ''
+  commissionSaving.value = true
+  try {
+    await auth.updateCommissionSettings(commissionRate.value, commissionRateAusNz.value)
+    commissionSuccess.value = 'Commission rates saved!'
+    setTimeout(() => { commissionSuccess.value = '' }, 3000)
+  } catch {
+    commissionError.value = auth.error || 'Failed to save commission rates'
+  } finally {
+    commissionSaving.value = false
+  }
+}
+
+async function handleRecalculateCommission() {
+  commissionError.value = ''
+  commissionSuccess.value = ''
+  // Save first, then recalculate
+  commissionRecalculating.value = true
+  try {
+    await auth.updateCommissionSettings(commissionRate.value, commissionRateAusNz.value)
+    const result = await auth.recalculateCommission()
+    // Reload bets so table reflects new P/L and commission_paid values
+    await betStore.loadBets(0, 100, 'start_time', 'desc')
+    commissionSuccess.value = `Commission recalculated for ${result.bets_processed.toLocaleString()} bets.`
+    setTimeout(() => { commissionSuccess.value = '' }, 5000)
+  } catch {
+    commissionError.value = auth.error || 'Recalculation failed'
+  } finally {
+    commissionRecalculating.value = false
   }
 }
 
@@ -252,6 +299,85 @@ async function handleManageSubscription() {
             </button>
           </div>
         </form>
+      </div>
+
+      <!-- ═══════ Commission Settings ═══════ -->
+      <div class="glass-card overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800/40">
+          <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" /></svg>
+            Commission Settings
+          </h2>
+        </div>
+        <div class="p-6 space-y-4">
+          <Transition enter-active-class="transition duration-200" enter-from-class="opacity-0 -translate-y-1" enter-to-class="opacity-100 translate-y-0">
+            <div v-if="commissionSuccess" class="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-400">{{ commissionSuccess }}</div>
+          </Transition>
+          <div v-if="commissionError" class="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-sm text-rose-400">{{ commissionError }}</div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">Global Commission Rate (%)</label>
+              <input v-model.number="commissionRate" type="number" min="0" max="100" step="0.1" class="input-field" placeholder="e.g. 2" />
+              <p class="mt-1 text-xs text-gray-500">Applied to all non-AUS/NZ markets (Betfair default: 2%)</p>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">AUS / NZ Commission Rate (%)</label>
+              <input v-model.number="commissionRateAusNz" type="number" min="0" max="100" step="0.1" class="input-field" placeholder="e.g. 5" />
+              <p class="mt-1 text-xs text-gray-500">Applied when (AUS) or (NZL) is detected in the market name</p>
+            </div>
+          </div>
+
+          <!-- Expandable help section -->
+          <div class="border border-gray-200 dark:border-gray-700/50 rounded-xl overflow-hidden">
+            <button
+              @click="showCommissionHelp = !showCommissionHelp"
+              class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white bg-gray-50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors"
+            >
+              <span class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                How commission calculation works
+              </span>
+              <svg class="w-4 h-4 transition-transform" :class="showCommissionHelp ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            <div v-if="showCommissionHelp" class="px-4 py-4 space-y-3 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-gray-800/10 border-t border-gray-200 dark:border-gray-700/50">
+              <p><strong class="text-gray-700 dark:text-gray-300">Why commission isn't in the raw export:</strong> BFBM's bet history screen shows individual bets, but Betfair deducts commission from the overall market profit. Because a market can have multiple bets (e.g. hedge strategies), the export cannot correctly split commission per bet — so it omits it.</p>
+              <p><strong class="text-gray-700 dark:text-gray-300">How this tool applies commission:</strong> Bets from the same market and same strategy are grouped together. The net P/L for the group is calculated. If it is positive, commission is applied to that net profit and deducted from the <em>first positively-settled bet</em> in the group. All other bets carry zero commission. If the group has a net loss, no commission is charged (Betfair doesn't charge commission on losing markets). For single bet back/lay strategies commission will always be calculated on bets with a positive return.</p>
+              <p><strong class="text-gray-700 dark:text-gray-300">Hedge strategies:</strong> If your bot places both BACK and LAY bets on the same market (hedge bets), they are grouped correctly — commission is only applied if the combined result is profitable, preventing over-deduction.</p>
+              <p><strong class="text-gray-700 dark:text-gray-300">AUS / NZ detection:</strong> A market is treated as AUS/NZ if <code class="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">(AUS)</code> or <code class="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">(NZL)</code> appears in the market name. If you include the <strong>Competition</strong> column in your data export, markets with "Australia" or "New Zealand" in the competition name are also detected. Note: some football and rugby matches may not be detected without the Competition column.</p>
+              <p><strong class="text-gray-700 dark:text-gray-300">The P/L column</strong> in the Bets table always shows the commission-adjusted figure. The separate <strong>Commission Paid</strong> column shows how much commission was attributed to each bet.</p>
+              <p><strong class="text-gray-700 dark:text-gray-300">Recalculate All Bets</strong> saves your new rates and re-runs commission across all your bets. Use this whenever you change your rates.</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-3 pt-1">
+            <button
+              @click="handleSaveCommission"
+              :disabled="commissionSaving || commissionRecalculating"
+              class="btn-glow !py-2.5 text-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:!transform-none"
+            >
+              <span v-if="commissionSaving" class="flex items-center gap-2">
+                <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                Saving…
+              </span>
+              <span v-else>Save Rates</span>
+            </button>
+            <button
+              @click="handleRecalculateCommission"
+              :disabled="commissionSaving || commissionRecalculating"
+              class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span v-if="commissionRecalculating" class="flex items-center gap-2">
+                <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
+                Recalculating all bets…
+              </span>
+              <span v-else class="flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                Recalculate All Bets
+              </span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- ═══════ Subscription Info ═══════ -->

@@ -167,9 +167,11 @@ export interface Bet {
   recalculated_stake?: number
   recalculated_pl?: number
   recalculated_liability?: number
+  recalculated_commission_paid?: number
   is_deleted?: boolean
   strategy_count?: number
   strategies_triggered?: string[]
+  commission_paid?: number
 }
 
 export interface PLDataPoint {

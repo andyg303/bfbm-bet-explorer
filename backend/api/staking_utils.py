@@ -15,12 +15,16 @@ def calculate_new_stake(
         return base_stake
     
     elif staking_type == "level_win":
-        # For LAY bets, stake to win a level amount
-        # For BACK bets, use base stake
+        # For BACK bets: stake = base_win / (odds - 1) so that profit = base_win
+        # For LAY bets: lay stake = base_win (the lay stake IS what you win when selection loses)
+        if avg_price_matched <= 1:
+            return original_stake  # can't calculate, fall back
         if bet_type == "LAY":
+            # Lay stake = base_win / (odds - 1) so that liability = base_win
             return base_stake / (avg_price_matched - 1)
         else:
-            return base_stake
+            # Back stake = base_win / (odds - 1) so that profit = base_win
+            return base_stake / (avg_price_matched - 1)
     
     return original_stake
 

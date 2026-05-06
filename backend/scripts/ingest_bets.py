@@ -256,17 +256,6 @@ def normalize_event_name(event_name):
     
     return normalized
 
-def apply_commission(profit_loss):
-    """Apply 2% commission on winning bets"""
-    if profit_loss is None:
-        return None
-    
-    # Only apply commission on positive returns (winning bets)
-    if profit_loss > 0:
-        return profit_loss * 0.98  # Deduct 2% commission
-    
-    return profit_loss
-
 def parse_datetime(value):
     """Parse datetime strings in multiple formats (ISO, DD/MM/YYYY, etc.).
     Rejects sentinel dates like 0001-01-01 used for unsettled bets.
@@ -551,11 +540,10 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None, progress_ca
                 bet_type, avg_price, bsp_val
             )
 
-            # ── Commission on P/L ─────────────────────────────────────────
+            # ── P/L (gross — per-user commission applied after ingest) ────────
             raw_pl = safe_get(row, 'profit_loss')
             if raw_pl is not None and not isinstance(raw_pl, (int, float)):
                 raw_pl = safe_float(raw_pl)
-            profit_loss_with_commission = apply_commission(raw_pl)
 
             # ── String fields ─────────────────────────────────────────────
             event = safe_get(row, 'event')
@@ -617,7 +605,7 @@ def ingest_csv_file(filepath: str, db: Session, user_id: int = None, progress_ca
                 'avg_price_matched':      avg_price,
                 'price_requested':        price_req,
                 'status':                 status,
-                'profit_loss':            profit_loss_with_commission,
+                'profit_loss':            raw_pl,
                 'strategy':               strategy,
                 'strategy_id':            strategy_id,
                 'bsp':                    bsp_val,

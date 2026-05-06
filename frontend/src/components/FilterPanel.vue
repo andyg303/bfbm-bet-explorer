@@ -21,6 +21,7 @@ function clearFilters() {
   betStore.stakingParams = {
     staking_type: 'default',
     base_stake: 10,
+    deduplicate: false,
   }
   betStore.filters = {
     strategies: [],
