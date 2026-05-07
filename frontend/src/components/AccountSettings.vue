@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/authStore'
 import { useBetStore } from '../stores/betStore'
+import LoadingOverlay from './LoadingOverlay.vue'
 
 const auth = useAuthStore()
 const betStore = useBetStore()
@@ -367,15 +368,17 @@ async function handleManageSubscription() {
               :disabled="commissionSaving || commissionRecalculating"
               class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <span v-if="commissionRecalculating" class="flex items-center gap-2">
-                <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
-                Recalculating all bets…
-              </span>
-              <span v-else class="flex items-center gap-2">
+              <span class="flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                 Recalculate All Bets
               </span>
             </button>
+
+            <LoadingOverlay
+              :show="commissionRecalculating"
+              title="Recalculating commission…"
+              message="Please do not close or refresh this page. This may take a few minutes for large bet histories."
+            />
           </div>
         </div>
       </div>
