@@ -3,6 +3,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/authStore'
 import { useBetStore } from '../stores/betStore'
 import LoadingOverlay from './LoadingOverlay.vue'
+import {
+  createAutomationToken,
+  listAutomationTokens,
+  revokeAutomationToken,
+  type AutomationToken,
+} from '../services/api'
 
 const auth = useAuthStore()
 const betStore = useBetStore()
@@ -36,6 +42,15 @@ const commissionRecalculating = ref(false)
 const commissionSuccess = ref('')
 const commissionError = ref('')
 const showCommissionHelp = ref(false)
+
+// ─── Automation uploader tokens ─────────────────────────────────────────────
+const automationTokens = ref<AutomationToken[]>([])
+const automationTokenName = ref('VPS uploader')
+const newAutomationToken = ref('')
+const automationLoading = ref(false)
+const automationCreating = ref(false)
+const automationError = ref('')
+const automationSuccess = ref('')
 
 const passwordStrength = computed(() => {
   const p = newPassword.value
@@ -74,6 +89,7 @@ onMounted(async () => {
     commissionRate.value = auth.user.commission_rate ?? 2.0
     commissionRateAusNz.value = auth.user.commission_rate_aus_nz ?? 5.0
   }
+  await loadAutomationTokens()
 })
 
 async function handleUpdateProfile() {
@@ -154,6 +170,57 @@ async function handleRecalculateCommission() {
     commissionError.value = auth.error || 'Recalculation failed'
   } finally {
     commissionRecalculating.value = false
+  }
+}
+
+async function loadAutomationTokens() {
+  automationLoading.value = true
+  automationError.value = ''
+  try {
+    automationTokens.value = await listAutomationTokens()
+  } catch {
+    automationError.value = 'Failed to load upload tokens'
+  } finally {
+    automationLoading.value = false
+  }
+}
+
+async function handleCreateAutomationToken() {
+  automationCreating.value = true
+  automationError.value = ''
+  automationSuccess.value = ''
+  newAutomationToken.value = ''
+  try {
+    const res = await createAutomationToken(automationTokenName.value)
+    newAutomationToken.value = res.token
+    automationTokens.value = [res.token_record, ...automationTokens.value]
+    automationSuccess.value = 'Upload token created.'
+  } catch {
+    automationError.value = 'Failed to create upload token'
+  } finally {
+    automationCreating.value = false
+  }
+}
+
+async function handleRevokeAutomationToken(id: number) {
+  automationError.value = ''
+  automationSuccess.value = ''
+  try {
+    await revokeAutomationToken(id)
+    automationTokens.value = automationTokens.value.filter((token) => token.id !== id)
+    automationSuccess.value = 'Upload token revoked.'
+  } catch {
+    automationError.value = 'Failed to revoke upload token'
+  }
+}
+
+async function copyAutomationToken() {
+  if (!newAutomationToken.value) return
+  try {
+    await navigator.clipboard.writeText(newAutomationToken.value)
+    automationSuccess.value = 'Token copied.'
+  } catch {
+    automationError.value = 'Could not copy token automatically'
   }
 }
 
@@ -379,6 +446,80 @@ async function handleManageSubscription() {
               title="Recalculating commission…"
               message="Please do not close or refresh this page. This may take a few minutes for large bet histories."
             />
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════ Automation Uploads ═══════ -->
+      <div class="glass-card overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800/40">
+          <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            Automation Uploads
+          </h2>
+        </div>
+        <div class="p-6 space-y-4">
+          <Transition enter-active-class="transition duration-200" enter-from-class="opacity-0 -translate-y-1" enter-to-class="opacity-100 translate-y-0">
+            <div v-if="automationSuccess" class="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-400">{{ automationSuccess }}</div>
+          </Transition>
+          <div v-if="automationError" class="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-sm text-rose-400">{{ automationError }}</div>
+
+          <div class="flex flex-col sm:flex-row gap-3">
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">Token Name</label>
+              <input v-model="automationTokenName" type="text" maxlength="100" class="input-field" placeholder="VPS uploader" />
+            </div>
+            <div class="flex items-end">
+              <button
+                @click="handleCreateAutomationToken"
+                :disabled="automationCreating"
+                class="btn-glow !py-2.5 text-sm w-full sm:w-auto disabled:opacity-40 disabled:cursor-not-allowed disabled:!transform-none"
+              >
+                <span v-if="automationCreating" class="flex items-center gap-2">
+                  <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                  Creating…
+                </span>
+                <span v-else>Create Token</span>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="newAutomationToken" class="rounded-xl border border-teal-500/20 bg-teal-500/10 p-3">
+            <p class="mb-2 text-xs font-medium text-teal-300">New token</p>
+            <div class="flex flex-col sm:flex-row gap-2">
+              <input :value="newAutomationToken" readonly class="input-field font-mono text-xs min-w-0" />
+              <button @click="copyAutomationToken" class="px-3 py-2 rounded-lg bg-teal-500/20 text-teal-300 text-sm font-medium hover:bg-teal-500/30 transition-colors">
+                Copy
+              </button>
+            </div>
+          </div>
+
+          <div class="border border-gray-200 dark:border-gray-700/50 rounded-xl overflow-hidden">
+            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-800/30 flex items-center justify-between">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">Active Tokens</p>
+              <button @click="loadAutomationTokens" :disabled="automationLoading" class="text-xs font-medium text-teal-400 hover:text-teal-300 disabled:opacity-40">
+                Refresh
+              </button>
+            </div>
+            <div v-if="automationLoading" class="px-4 py-4 text-sm text-gray-500">Loading…</div>
+            <div v-else-if="automationTokens.length === 0" class="px-4 py-4 text-sm text-gray-500">No active upload tokens.</div>
+            <div v-else class="divide-y divide-gray-100 dark:divide-gray-800/50">
+              <div v-for="token in automationTokens" :key="token.id" class="px-4 py-3 flex items-center justify-between gap-4">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ token.name }}</p>
+                  <p class="text-xs text-gray-500 font-mono">{{ token.token_prefix }}</p>
+                  <p class="text-xs text-gray-500 mt-0.5">
+                    Created {{ formatDate(token.created_at) }} · Last used {{ formatDate(token.last_used_at) }}
+                  </p>
+                </div>
+                <button
+                  @click="handleRevokeAutomationToken(token.id)"
+                  class="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-400 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 transition-colors"
+                >
+                  Revoke
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

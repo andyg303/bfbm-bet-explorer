@@ -118,6 +118,42 @@ CREATE TABLE public.ingestion_logs (
 
 
 --
+-- Name: automation_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.automation_tokens (
+    id integer NOT NULL,
+    user_id integer NOT NULL,
+    name character varying NOT NULL,
+    token_hash character varying NOT NULL,
+    token_prefix character varying NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    last_used_at timestamp without time zone,
+    revoked_at timestamp without time zone
+);
+
+
+--
+-- Name: automation_tokens_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.automation_tokens_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: automation_tokens_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.automation_tokens_id_seq OWNED BY public.automation_tokens.id;
+
+
+--
 -- Name: ingestion_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -200,6 +236,13 @@ ALTER TABLE ONLY public.ingestion_logs ALTER COLUMN id SET DEFAULT nextval('publ
 
 
 --
+-- Name: automation_tokens id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.automation_tokens ALTER COLUMN id SET DEFAULT nextval('public.automation_tokens_id_seq'::regclass);
+
+
+--
 -- Name: users id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -220,6 +263,14 @@ ALTER TABLE ONLY public.bets
 
 ALTER TABLE ONLY public.ingestion_logs
     ADD CONSTRAINT ingestion_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: automation_tokens automation_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.automation_tokens
+    ADD CONSTRAINT automation_tokens_pkey PRIMARY KEY (id);
 
 
 --
@@ -420,6 +471,41 @@ CREATE INDEX ix_ingestion_logs_user_id ON public.ingestion_logs USING btree (use
 
 
 --
+-- Name: ix_automation_tokens_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_automation_tokens_id ON public.automation_tokens USING btree (id);
+
+
+--
+-- Name: ix_automation_tokens_revoked_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_automation_tokens_revoked_at ON public.automation_tokens USING btree (revoked_at);
+
+
+--
+-- Name: ix_automation_tokens_token_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_automation_tokens_token_hash ON public.automation_tokens USING btree (token_hash);
+
+
+--
+-- Name: ix_automation_tokens_token_prefix; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_automation_tokens_token_prefix ON public.automation_tokens USING btree (token_prefix);
+
+
+--
+-- Name: ix_automation_tokens_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_automation_tokens_user_id ON public.automation_tokens USING btree (user_id);
+
+
+--
 -- Name: ix_users_email; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -471,7 +557,13 @@ ALTER TABLE ONLY public.ingestion_logs
 
 
 --
--- PostgreSQL database dump complete
+-- Name: automation_tokens automation_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
+ALTER TABLE ONLY public.automation_tokens
+    ADD CONSTRAINT automation_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
 
+
+--
+-- PostgreSQL database dump complete
+--

@@ -236,10 +236,10 @@ async function handleDelete(bet: any) {
           <tr>
             <th @click="sort('start_time')" class="cursor-pointer hover:text-teal-400 transition-colors">Event Date <span v-if="sortKey === 'start_time'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th class="whitespace-nowrap">Time</th>
-            <th @click="sort('description')" class="cursor-pointer hover:text-teal-400 transition-colors">Event <span v-if="sortKey === 'description'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('description')" class="cursor-pointer hover:text-teal-400 transition-colors" style="min-width:180px">Event <span v-if="sortKey === 'description'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('selection')" class="cursor-pointer hover:text-teal-400 transition-colors">Selection <span v-if="sortKey === 'selection'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('event')" class="cursor-pointer hover:text-teal-400 transition-colors">Sport <span v-if="sortKey === 'event'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
-            <th @click="sort('strategy')" class="cursor-pointer hover:text-teal-400 transition-colors">Strategy <span v-if="sortKey === 'strategy'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('strategy')" class="cursor-pointer hover:text-teal-400 transition-colors" style="min-width:180px">Strategy <span v-if="sortKey === 'strategy'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th v-if="isDedup" class="text-center whitespace-nowrap text-teal-400"># Strats</th>
             <th @click="sort('bet_type')" class="cursor-pointer hover:text-teal-400 transition-colors">Type <span v-if="sortKey === 'bet_type'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('matched_amount')" class="cursor-pointer hover:text-teal-400 transition-colors">Stake <span v-if="sortKey === 'matched_amount'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
@@ -252,7 +252,7 @@ async function handleDelete(bet: any) {
             <th @click="sort('profit_loss')" class="cursor-pointer hover:text-teal-400 transition-colors">P/L <span v-if="sortKey === 'profit_loss'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th class="whitespace-nowrap text-amber-400/80">Comm. Paid</th>
             <th @click="sort('market_type')" class="cursor-pointer hover:text-teal-400 transition-colors">Market <span v-if="sortKey === 'market_type'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
-            <th @click="sort('competition')" class="cursor-pointer hover:text-teal-400 transition-colors">Competition <span v-if="sortKey === 'competition'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('competition')" class="cursor-pointer hover:text-teal-400 transition-colors" style="min-width:160px">Competition <span v-if="sortKey === 'competition'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('placed_date')" class="cursor-pointer hover:text-teal-400 transition-colors whitespace-nowrap">Placed <span v-if="sortKey === 'placed_date'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th class="text-center">Del</th>
           </tr>
@@ -261,10 +261,10 @@ async function handleDelete(bet: any) {
           <tr v-for="bet in bets" :key="bet.id">
             <td class="whitespace-nowrap text-gray-500 font-mono text-xs">{{ formatDate(bet.start_time) }}</td>
             <td class="whitespace-nowrap text-gray-500 font-mono text-xs">{{ formatTime(bet.start_time) }}</td>
-            <td class="text-gray-600 dark:text-gray-300 max-w-[150px] truncate" :title="bet.description || ''">{{ formatEventName(bet.description) }}</td>
+            <td class="text-gray-600 dark:text-gray-300 truncate" style="max-width:280px" :title="bet.description || ''">{{ formatEventName(bet.description) }}</td>
             <td class="whitespace-nowrap text-gray-600 dark:text-gray-300">{{ bet.selection }}</td>
-            <td class="text-gray-600 dark:text-gray-300 max-w-[120px] truncate" :title="bet.event || ''">{{ bet.event }}</td>
-            <td class="text-gray-600 dark:text-gray-300 max-w-[140px] truncate" :title="bet.strategy || ''">{{ bet.strategy }}</td>
+            <td class="text-gray-600 dark:text-gray-300 truncate" style="max-width:180px" :title="bet.event || ''">{{ bet.event }}</td>
+            <td class="text-gray-600 dark:text-gray-300 truncate" style="max-width:280px" :title="bet.strategy || ''">{{ bet.strategy }}</td>
             <td v-if="isDedup" class="text-center">
               <span
                 v-if="bet.strategy_count && bet.strategy_count > 1"
@@ -313,7 +313,7 @@ async function handleDelete(bet: any) {
               <span v-else class="text-gray-500">-</span>
             </td>
             <td class="whitespace-nowrap text-gray-500">{{ bet.market_type }}</td>
-            <td class="text-gray-500 max-w-[120px] truncate" :title="bet.competition || ''">{{ bet.competition }}</td>
+            <td class="text-gray-500 truncate" style="max-width:240px" :title="bet.competition || ''">{{ bet.competition }}</td>
             <td class="whitespace-nowrap text-gray-500 font-mono text-xs" :title="formatDateTime(bet.placed_date)">{{ formatDateTime(bet.placed_date) }}</td>
             <td class="text-center">
               <button @click="handleDelete(bet)" :disabled="deletingId === bet.id" title="Soft-delete this bet" class="p-1 rounded text-gray-600 hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">

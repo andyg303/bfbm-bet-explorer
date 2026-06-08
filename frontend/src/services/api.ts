@@ -266,6 +266,36 @@ export const getMonthlyPL = async (filters: FilterParams): Promise<MonthlyPLResp
   return response.data
 }
 
+export interface AutomationToken {
+  id: number
+  name: string
+  token_prefix: string
+  created_at: string | null
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+export interface AutomationTokenCreateResponse {
+  token: string
+  token_record: AutomationToken
+}
+
+export const listAutomationTokens = async (): Promise<AutomationToken[]> => {
+  const response = await api.get('/automation/tokens')
+  return response.data
+}
+
+export const createAutomationToken = async (
+  name?: string,
+): Promise<AutomationTokenCreateResponse> => {
+  const response = await api.post('/automation/tokens', { name })
+  return response.data
+}
+
+export const revokeAutomationToken = async (id: number): Promise<void> => {
+  await api.delete(`/automation/tokens/${id}`)
+}
+
 export interface IngestProgressEvent {
   type: 'start' | 'progress' | 'complete' | 'error'
   total_rows?: number
@@ -384,6 +414,13 @@ export const restoreStrategies = async (
   strategies: string[],
 ): Promise<{ restored_bets: number }> => {
   const response = await api.post('/strategies/restore', { strategies })
+  return response.data
+}
+
+export const deleteArchivedStrategies = async (
+  strategies: string[],
+): Promise<{ deleted_bets: number }> => {
+  const response = await api.delete('/strategies/archived', { data: { strategies } })
   return response.data
 }
 

@@ -7,8 +7,10 @@ import LoadingOverlay from './LoadingOverlay.vue'
 const betStore = useBetStore()
 const selectedStrategies = ref<Set<string>>(new Set())
 const showRestoreDialog = ref(false)
+const showDeleteDialog = ref(false)
 const searchQuery = ref('')
 const restoring = ref(false)
+const deleting = ref(false)
 
 onMounted(() => {
   betStore.loadArchivedStrategies()
@@ -47,6 +49,17 @@ async function confirmRestore() {
   }
 }
 
+async function confirmDelete() {
+  showDeleteDialog.value = false
+  deleting.value = true
+  try {
+    await betStore.deleteArchivedStrategies(Array.from(selectedStrategies.value))
+    selectedStrategies.value.clear()
+  } finally {
+    deleting.value = false
+  }
+}
+
 function formatDate(dateStr: string | null) {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-GB', {
@@ -67,7 +80,7 @@ function formatDate(dateStr: string | null) {
           Archived strategies are hidden from the main dashboard. Restore them at any time.
         </p>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex flex-wrap items-center gap-3">
         <button
           @click="showRestoreDialog = true"
           :disabled="selectedStrategies.size === 0"
@@ -77,6 +90,16 @@ function formatDate(dateStr: string | null) {
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
           Restore ({{ selectedStrategies.size }})
+        </button>
+        <button
+          @click="showDeleteDialog = true"
+          :disabled="selectedStrategies.size === 0"
+          class="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium text-rose-400 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-all"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Delete ({{ selectedStrategies.size }})
         </button>
       </div>
     </div>
@@ -173,10 +196,29 @@ function formatDate(dateStr: string | null) {
       @cancel="showRestoreDialog = false"
     />
 
+    <!-- Delete Confirmation Dialog -->
+    <ConfirmDialog
+      :open="showDeleteDialog"
+      title="Permanently Delete Strategies"
+      :message="`This will permanently delete all archived bets for ${selectedStrategies.size} strateg${selectedStrategies.size === 1 ? 'y' : 'ies'} from the database. If you upload the same file again, these bets and strategies can be imported again because no block record is kept.`"
+      confirm-label="Delete Permanently"
+      cancel-label="Cancel"
+      variant="danger"
+      icon="trash"
+      @confirm="confirmDelete"
+      @cancel="showDeleteDialog = false"
+    />
+
     <LoadingOverlay
       :show="restoring"
       title="Restoring strategies…"
       message="Returning the selected strategies to the dashboard and recalculating stats. This can take up to a minute for large data sets — please wait."
+    />
+
+    <LoadingOverlay
+      :show="deleting"
+      title="Deleting strategies…"
+      message="Permanently removing the archived bets for the selected strategies."
     />
   </div>
 </template>

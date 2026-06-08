@@ -6,7 +6,7 @@ Every query is scoped to the authenticated user's user_id.
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, Query, UploadFile, File, HTTPException, status, Request
+from fastapi import FastAPI, Depends, Query, UploadFile, File, HTTPException, status, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter
@@ -29,15 +29,18 @@ import tempfile
 import shutil
 import re
 import logging
+import hashlib
+import secrets
 
 logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import get_db, SessionLocal, Bet, User, IngestionLog, init_db
+from database import get_db, SessionLocal, Bet, User, IngestionLog, AutomationToken, init_db
 from scripts.ingest_bets import ingest_csv_file, sanitize_strategy_name, read_csv, normalize_columns
 from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability, deduplicate_bets
 from api.commission import apply_commission_for_user, calculate_restaked_commission_map
+from api.strategy_actions import delete_archived_strategy_bets
 from api.auth import (
     get_current_user,
     get_password_hash,
@@ -170,6 +173,25 @@ async def lifespan(app):
             """))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ingestion_logs_user_id ON ingestion_logs (user_id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ingestion_logs_status ON ingestion_logs (status)"))
+
+        # ── AutomationToken table for VPS upload helpers ──
+        if not insp.has_table('automation_tokens'):
+            conn.execute(text("""
+                CREATE TABLE automation_tokens (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    name VARCHAR NOT NULL,
+                    token_hash VARCHAR NOT NULL UNIQUE,
+                    token_prefix VARCHAR NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    last_used_at TIMESTAMP,
+                    revoked_at TIMESTAMP
+                )
+            """))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_automation_tokens_user_id ON automation_tokens (user_id)"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_automation_tokens_token_hash ON automation_tokens (token_hash)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_automation_tokens_token_prefix ON automation_tokens (token_prefix)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_automation_tokens_revoked_at ON automation_tokens (revoked_at)"))
     yield
 
 
@@ -358,11 +380,12 @@ def _user_dict(user: User) -> dict:
     }
 
 
-async def require_active_subscription(
-    user: User = Depends(get_current_user),
-) -> User:
-    """Dependency: reject requests from users without an active subscription.
-    Admins (is_admin=True) bypass all subscription checks."""
+def ensure_active_subscription(user: User) -> User:
+    """Reject users without an active subscription.
+
+    Shared by normal JWT endpoints and automation-token endpoints.
+    Admins (is_admin=True) bypass all subscription checks.
+    """
     if user.is_admin:
         return user
     if user.subscription_status != "active":
@@ -379,6 +402,76 @@ async def require_active_subscription(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Your subscription has expired. Please renew to continue.",
             )
+    return user
+
+
+async def require_active_subscription(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Dependency: reject requests from users without an active subscription."""
+    return ensure_active_subscription(user)
+
+
+AUTOMATION_TOKEN_PREFIX = "bfbm_auto_"
+
+
+def hash_automation_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_plain_automation_token() -> str:
+    return f"{AUTOMATION_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+
+
+def automation_token_dict(token: AutomationToken) -> dict:
+    return {
+        "id": token.id,
+        "name": token.name,
+        "token_prefix": token.token_prefix,
+        "created_at": token.created_at.isoformat() if token.created_at else None,
+        "last_used_at": token.last_used_at.isoformat() if token.last_used_at else None,
+        "revoked_at": token.revoked_at.isoformat() if token.revoked_at else None,
+    }
+
+
+async def get_automation_user(
+    authorization: Optional[str] = Header(None),
+    x_bfbm_automation_token: Optional[str] = Header(None, alias="X-BFBM-Automation-Token"),
+    db: Session = Depends(get_db),
+) -> User:
+    """Authenticate a machine upload request via a revocable API token."""
+    token = (x_bfbm_automation_token or "").strip()
+    if not token and authorization:
+        scheme, _, value = authorization.partition(" ")
+        if scheme.lower() == "bearer":
+            token = value.strip()
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing automation token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token_hash = hash_automation_token(token)
+    token_row = (
+        db.query(AutomationToken)
+        .filter(
+            AutomationToken.token_hash == token_hash,
+            AutomationToken.revoked_at.is_(None),
+        )
+        .first()
+    )
+    if not token_row or not token_row.user or not token_row.user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid automation token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = ensure_active_subscription(token_row.user)
+    token_row.last_used_at = datetime.now(timezone.utc)
+    db.commit()
     return user
 
 
@@ -708,6 +801,10 @@ class CommissionSettingsRequest(BaseModel):
     commission_rate_aus_nz: float
 
 
+class AutomationTokenCreateRequest(BaseModel):
+    name: Optional[str] = None
+
+
 @app.post("/user/update-commission")
 def update_commission_settings(
     req: CommissionSettingsRequest,
@@ -724,6 +821,75 @@ def update_commission_settings(
     db.commit()
     db.refresh(user)
     return {"ok": True, "user": _user_dict(user)}
+
+
+@app.get("/automation/tokens")
+def list_automation_tokens(
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """List active automation tokens for the current user."""
+    rows = (
+        db.query(AutomationToken)
+        .filter(
+            AutomationToken.user_id == user.id,
+            AutomationToken.revoked_at.is_(None),
+        )
+        .order_by(AutomationToken.created_at.desc())
+        .all()
+    )
+    return [automation_token_dict(row) for row in rows]
+
+
+@app.post("/automation/tokens")
+def create_automation_token(
+    req: AutomationTokenCreateRequest,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Create a one-time visible token for a VPS/desktop uploader."""
+    name = (req.name or "BFBM uploader").strip()
+    if not name:
+        name = "BFBM uploader"
+    name = name[:100]
+
+    plain_token = create_plain_automation_token()
+    token_row = AutomationToken(
+        user_id=user.id,
+        name=name,
+        token_hash=hash_automation_token(plain_token),
+        token_prefix=f"{plain_token[:18]}...",
+    )
+    db.add(token_row)
+    db.commit()
+    db.refresh(token_row)
+    return {
+        "token": plain_token,
+        "token_record": automation_token_dict(token_row),
+    }
+
+
+@app.delete("/automation/tokens/{token_id}")
+def revoke_automation_token(
+    token_id: int,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Revoke an automation token belonging to the current user."""
+    token_row = (
+        db.query(AutomationToken)
+        .filter(
+            AutomationToken.id == token_id,
+            AutomationToken.user_id == user.id,
+            AutomationToken.revoked_at.is_(None),
+        )
+        .first()
+    )
+    if not token_row:
+        raise HTTPException(status_code=404, detail="Automation token not found")
+    token_row.revoked_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True}
 
 
 @app.post("/recalculate-commission")
@@ -807,6 +973,20 @@ def restore_strategies(
     )
     db.commit()
     return {"ok": True, "restored_bets": count, "strategies": req.strategies}
+
+
+@app.delete("/strategies/archived")
+def delete_archived_strategies(
+    req: ArchiveStrategiesRequest,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete archived strategies for this user."""
+    if not req.strategies:
+        raise HTTPException(status_code=400, detail="No strategies provided")
+    count = delete_archived_strategy_bets(db, user.id, req.strategies)
+    db.commit()
+    return {"ok": True, "deleted_bets": count, "strategies": req.strategies}
 
 
 @app.get("/strategies/archived")
@@ -1797,6 +1977,143 @@ def get_monthly_pl(
     }
 
 
+CSV_CONTENT_TYPES = {
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/octet-stream",
+    "text/plain",
+}
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_UPLOAD_ROWS = 500_000
+
+
+async def save_validated_csv_upload(file: UploadFile) -> tuple[str, int]:
+    """Persist an uploaded CSV to a temp file and validate its basic shape."""
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must be a .csv")
+
+    if file.content_type and file.content_type not in CSV_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a CSV file.")
+
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+        tmp.write(contents)
+        tmp_path = tmp.name
+
+    try:
+        test_df = read_csv(tmp_path)
+        _, _ = normalize_columns(test_df)
+        total_rows = len(test_df)
+        if total_rows > MAX_UPLOAD_ROWS:
+            os.unlink(tmp_path)
+            raise HTTPException(status_code=400, detail="CSV too large (max 500,000 rows)")
+        del test_df
+        return tmp_path, total_rows
+    except HTTPException:
+        raise
+    except ValueError as e:
+        os.unlink(tmp_path)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        os.unlink(tmp_path)
+        raise HTTPException(status_code=500, detail=f"Failed to read CSV: {e}")
+
+
+def process_ingestion_for_user(
+    tmp_path: str,
+    filename: str,
+    total_rows: int,
+    user_id: int,
+    progress_callback=None,
+) -> dict:
+    """Run CSV ingestion, commission recalculation, and ingestion logging."""
+    db = SessionLocal()
+    try:
+        result = ingest_csv_file(
+            tmp_path, db, user_id=user_id, progress_callback=progress_callback
+        )
+        if progress_callback:
+            progress_callback({
+                "type": "progress",
+                "processed": total_rows,
+                "total": total_rows,
+                "inserted": result["inserted"],
+                "updated": result["updated"],
+                "skipped": result["skipped"],
+                "phase": "Applying commission using your saved settings…",
+            })
+
+        db_user = db.query(User).filter(User.id == user_id).first()
+        commission_bets_processed = apply_commission_for_user(db, db_user) if db_user else 0
+        total_bets = db.query(Bet).filter(Bet.user_id == user_id).count()
+        warnings_list = result.get("warnings", [])
+        log_entry = IngestionLog(
+            user_id=user_id,
+            filename=filename,
+            status="partial" if warnings_list else "success",
+            rows_total=total_rows,
+            rows_inserted=result["inserted"],
+            rows_updated=result["updated"],
+            rows_skipped=result["skipped"],
+            warnings=json.dumps(warnings_list) if warnings_list else None,
+        )
+        db.add(log_entry)
+        db.commit()
+        return {
+            "filename": filename,
+            "inserted": result["inserted"],
+            "updated": result["updated"],
+            "skipped": result["skipped"],
+            "warnings": warnings_list,
+            "total_bets_in_db": total_bets,
+            "commission_bets_processed": commission_bets_processed,
+        }
+    except Exception as e:
+        db.rollback()
+        try:
+            log_entry = IngestionLog(
+                user_id=user_id,
+                filename=filename,
+                status="error",
+                rows_total=total_rows,
+                error_message=str(e)[:2000],
+            )
+            db.add(log_entry)
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@app.post("/automation/ingest")
+async def automation_ingest_csv(
+    file: UploadFile = File(...),
+    user: User = Depends(get_automation_user),
+):
+    """Upload a CSV from the scheduled VPS/desktop helper."""
+    tmp_path, total_rows = await save_validated_csv_upload(file)
+    try:
+        result = process_ingestion_for_user(
+            tmp_path=tmp_path,
+            filename=file.filename,
+            total_rows=total_rows,
+            user_id=user.id,
+        )
+        return {"ok": True, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
 @app.post("/ingest")
 async def ingest_csv(
     file: UploadFile = File(...),
@@ -1810,106 +2127,37 @@ async def ingest_csv(
       - {type: 'complete', filename, inserted, updated, skipped, warnings, total_bets_in_db}
       - {type: 'error', detail}
     """
-    if not file.filename or not file.filename.lower().endswith('.csv'):
-        raise HTTPException(status_code=400, detail="File must be a .csv")
-
-    # Validate content type
-    if file.content_type and file.content_type not in (
-        'text/csv', 'application/vnd.ms-excel', 'application/octet-stream',
-        'text/plain',
-    ):
-        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a CSV file.")
-
-    # Limit file size to 50 MB
-    contents = await file.read()
-    if len(contents) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp:
-        tmp.write(contents)
-        tmp_path = tmp.name
-
-    # Quick validation before starting the stream
-    try:
-        test_df = read_csv(tmp_path)
-        _, _ = normalize_columns(test_df)
-        total_rows = len(test_df)
-        if total_rows > 500_000:
-            os.unlink(tmp_path)
-            raise HTTPException(status_code=400, detail="CSV too large (max 500,000 rows)")
-        del test_df
-    except ValueError as e:
-        os.unlink(tmp_path)
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        os.unlink(tmp_path)
-        raise HTTPException(status_code=500, detail=f"Failed to read CSV: {e}")
-
+    tmp_path, total_rows = await save_validated_csv_upload(file)
     user_id = user.id
     filename = file.filename
     event_queue: queue.Queue = queue.Queue()
 
     def run_processing():
         """Run the actual ingestion in a background thread with its own DB session."""
-        db = SessionLocal()
         try:
             def on_progress(data):
                 event_queue.put(data)
 
-            result = ingest_csv_file(
-                tmp_path, db, user_id=user_id, progress_callback=on_progress
-            )
-            event_queue.put({
-                'type': 'progress',
-                'processed': total_rows,
-                'total': total_rows,
-                'inserted': result['inserted'],
-                'updated': result['updated'],
-                'skipped': result['skipped'],
-                'phase': 'Applying commission using your saved settings…',
-            })
-            db_user = db.query(User).filter(User.id == user_id).first()
-            commission_bets_processed = apply_commission_for_user(db, db_user) if db_user else 0
-            total_bets = db.query(Bet).filter(Bet.user_id == user_id).count()
-            warnings_list = result.get('warnings', [])
-            log_entry = IngestionLog(
-                user_id=user_id,
+            result = process_ingestion_for_user(
+                tmp_path=tmp_path,
                 filename=filename,
-                status='partial' if warnings_list else 'success',
-                rows_total=total_rows,
-                rows_inserted=result['inserted'],
-                rows_updated=result['updated'],
-                rows_skipped=result['skipped'],
-                warnings=json.dumps(warnings_list) if warnings_list else None,
+                total_rows=total_rows,
+                user_id=user_id,
+                progress_callback=on_progress,
             )
-            db.add(log_entry)
-            db.commit()
             event_queue.put({
                 'type': 'complete',
                 'filename': filename,
                 'inserted': result['inserted'],
                 'updated': result['updated'],
                 'skipped': result['skipped'],
-                'warnings': warnings_list,
-                'total_bets_in_db': total_bets,
-                'commission_bets_processed': commission_bets_processed,
+                'warnings': result['warnings'],
+                'total_bets_in_db': result['total_bets_in_db'],
+                'commission_bets_processed': result['commission_bets_processed'],
             })
         except Exception as e:
-            try:
-                log_entry = IngestionLog(
-                    user_id=user_id,
-                    filename=filename,
-                    status='error',
-                    rows_total=total_rows,
-                    error_message=str(e)[:2000],
-                )
-                db.add(log_entry)
-                db.commit()
-            except Exception:
-                pass
             event_queue.put({'type': 'error', 'detail': str(e)})
         finally:
-            db.close()
             try:
                 os.unlink(tmp_path)
             except OSError:

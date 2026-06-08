@@ -31,8 +31,8 @@ const features = [
   },
   {
     icon: 'upload',
-    title: 'Easy CSV Import',
-    desc: 'Import your Betfair bet history directly. Just export from BFBM and upload — we handle the rest.',
+    title: 'Automatic BFBM Uploads',
+    desc: 'Install the Windows companion app once and let it upload your latest BFBM bet history every night.',
   },
   {
     icon: 'shield',
@@ -45,7 +45,7 @@ const stats = [
   { value: '50+', label: 'Filter options' },
   { value: '6', label: 'Chart types' },
   { value: '∞', label: 'Strategies tracked' },
-  { value: '< 1s', label: 'Load time' },
+  { value: 'Daily', label: 'Scheduled uploads' },
 ]
 </script>
 
@@ -113,7 +113,7 @@ const stats = [
         <div class="text-center max-w-3xl mx-auto">
           <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 text-sm font-medium mb-8 animate-fade-in-up">
             <span class="w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>
-            Betfair Betting Analytics
+            Automatic Betfair Betting Analytics
           </div>
 
           <h1 class="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-gray-900 dark:text-white leading-[1.05] animate-fade-in-up stagger-1">
@@ -122,8 +122,8 @@ const stats = [
           </h1>
 
           <p class="mt-7 text-lg sm:text-xl text-gray-500 dark:text-gray-400 max-w-2xl mx-auto leading-relaxed animate-fade-in-up stagger-2">
-            The most powerful analytics dashboard for Betfair & BFBM users.
-            Track every strategy, model every staking plan, and find your edge.
+            The most powerful analytics dashboard for Betfair & BF Bot Manager users.
+            Track every strategy, model every staking plan, and keep your data current with automatic nightly uploads.
           </p>
 
           <div class="mt-12 flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up stagger-3">
@@ -214,7 +214,7 @@ const stats = [
             Ready to take your betting seriously?
           </h2>
           <p class="text-gray-400 text-lg mb-10 max-w-xl mx-auto relative">
-            Join punters who track, analyse, and improve their results. Plans from just £40 for 6 months.
+            Stop re-exporting CSVs by hand. Let BFBM Explorer upload, collate, and analyse your latest results every day.
           </p>
           <div class="flex flex-col sm:flex-row gap-4 justify-center relative">
             <button

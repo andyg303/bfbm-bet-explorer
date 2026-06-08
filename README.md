@@ -16,6 +16,7 @@ cd ~/bfbm-bet-explorer && git pull && docker compose -f docker-compose.prod.yml 
 ## Features
 
 - **Data Ingestion**: Import CSV bet data with automatic sanitization
+- **Automatic BFBM Uploads**: Windows companion app uploads recent BFBM data on a nightly schedule
 - **Strategy Analysis**: View performance metrics for each betting strategy
 - **Advanced Filtering**: Multi-select filters for strategies, bet types, markets, countries, and more
 - **Staking Calculator**: Recalculate P/L with different staking strategies:
@@ -67,6 +68,9 @@ docker compose exec backend python scripts/ingest_bets.py
 ```
 
 > Duplicate bets are detected by Bet ID and updated rather than re-inserted, so it's safe to re-run with the same file.
+
+**Option C — Scheduled VPS upload:**
+Build/distribute the Windows helper in `uploader/` as `BFBM Bet Explorer Uploader.exe`. Users can double-click it on their VPS, log in to their dashboard account, auto-detect BFBM's `uk_bets_history.gz` file (or choose an autosave CSV source), and install a daily scheduled upload of the last 48 hours of settled rows. See `uploader/README.md`.
 
 **Subsequent starts** (images already built):
 

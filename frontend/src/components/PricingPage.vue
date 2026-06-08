@@ -25,6 +25,7 @@ const plans = [
     features: [
       'Full analytics dashboard',
       'Unlimited CSV imports',
+      'Automatic daily BFBM uploads',
       'All chart types & filters',
       'Staking simulator',
       'Strategy archiving',
@@ -43,6 +44,7 @@ const plans = [
       'Everything in 6 Months',
       'Full analytics dashboard',
       'Unlimited CSV imports',
+      'Automatic daily BFBM uploads',
       'All chart types & filters',
       'Staking simulator',
       'Strategy archiving',
@@ -106,7 +108,7 @@ async function startCheckout(planKey: string) {
       <div class="text-center mb-14">
         <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white">Simple, transparent pricing</h1>
         <p class="mt-4 text-lg text-gray-500 dark:text-gray-400 max-w-xl mx-auto">
-          One-time payment, no recurring charges. Full access to every feature. Pick the plan that suits you.
+          One-time payment, no recurring charges. Full access, including the Windows app for automatic daily BFBM uploads.
         </p>
       </div>
 

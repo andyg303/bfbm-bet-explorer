@@ -56,6 +56,7 @@ class User(Base):
     stripe_checkout_session_id = Column(String, nullable=True)
 
     bets = relationship("Bet", back_populates="owner", lazy="dynamic")
+    automation_tokens = relationship("AutomationToken", back_populates="user", lazy="dynamic")
 
 
 class Bet(Base):
@@ -139,6 +140,22 @@ class IngestionLog(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     user = relationship("User")
+
+
+class AutomationToken(Base):
+    """Revocable API tokens for VPS/desktop upload helpers."""
+    __tablename__ = "automation_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    token_hash = Column(String, nullable=False, unique=True, index=True)
+    token_prefix = Column(String, nullable=False, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True, index=True)
+
+    user = relationship("User", back_populates="automation_tokens")
 
 def get_db():
     db = SessionLocal()

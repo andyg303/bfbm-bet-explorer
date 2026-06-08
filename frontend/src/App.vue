@@ -22,13 +22,14 @@ import AccountSettings from './components/AccountSettings.vue'
 import AdminDashboard from './components/AdminDashboard.vue'
 import LoadingOverlay from './components/LoadingOverlay.vue'
 import ContactPage from './components/ContactPage.vue'
+import UploaderPage from './components/UploaderPage.vue'
 
 const betStore = useBetStore()
 const auth = useAuthStore()
 const { isDark, toggle: toggleDark } = useDarkMode()
 
 // ─── Page routing (SPA-style with real URLs) ────────────────────────────────
-type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard' | 'forgot-password' | 'reset-password' | 'account' | 'admin' | 'contact'
+type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard' | 'forgot-password' | 'reset-password' | 'account' | 'admin' | 'contact' | 'uploader'
 const currentPage = ref<AppPage>('landing')
 const authInitialMode = ref<'login' | 'register' | 'forgot' | 'reset'>('login')
 const resetTokenFromUrl = ref('')
@@ -45,6 +46,7 @@ const PAGE_PATHS: Record<AppPage, string> = {
   account: '/account',
   admin: '/admin',
   contact: '/contact',
+  uploader: '/uploader',
 }
 
 function pageFromPath(path: string): AppPage {
@@ -76,10 +78,11 @@ function determineInitialPage(): AppPage {
     authInitialMode.value = 'forgot'
     return 'forgot-password'
   }
-  // Guard: account page requires auth
-  if (urlPage === 'account') {
+  // Guard: account/uploader pages require auth + subscription
+  if (urlPage === 'account' || urlPage === 'uploader') {
     if (!auth.isAuthenticated) return 'login'
-    return 'account'
+    if (!auth.hasActiveSubscription) return 'pricing'
+    return urlPage
   }
   // Guard: admin page requires auth + admin
   if (urlPage === 'admin') {
@@ -146,6 +149,15 @@ const showDashboard = computed(() =>
 // ─── Dashboard state ─────────────────────────────────────────────────────────
 const activeTab = ref<'dashboard' | 'archive' | 'strategies'>('dashboard')
 const sidebarOpen = ref(false)
+const desktopFilterOpen = ref(true)
+
+function toggleFilterPanel() {
+  if (window.innerWidth >= 1024) {
+    desktopFilterOpen.value = !desktopFilterOpen.value
+  } else {
+    sidebarOpen.value = !sidebarOpen.value
+  }
+}
 const showScrollTop = ref(false)
 const showUserMenu = ref(false)
 const showChangePassword = ref(false)
@@ -259,12 +271,7 @@ onMounted(async () => {
   // If user is authenticated, refresh their profile to get latest subscription status
   if (auth.isAuthenticated) {
     await auth.refreshUserProfile()
-    // Re-check after profile refresh
-    if (auth.hasActiveSubscription) {
-      currentPage.value = 'dashboard'
-    } else {
-      currentPage.value = 'pricing'
-    }
+    currentPage.value = determineInitialPage()
     // Load dashboard data if needed
     if (currentPage.value === 'dashboard') {
       await loadDashboardData()
@@ -325,6 +332,12 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
     @navigate="navigateTo"
   />
 
+  <!-- ═══════ Windows uploader download page ═══════ -->
+  <UploaderPage
+    v-else-if="currentPage === 'uploader'"
+    @navigate="navigateTo"
+  />
+
   <!-- ═══════ Admin Dashboard (admin only) ═══════ -->
   <AdminDashboard
     v-else-if="currentPage === 'admin' && auth.user?.is_admin"
@@ -339,9 +352,9 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
         <div class="flex h-14 items-center justify-between">
           <!-- Left: Menu button + Logo -->
           <div class="flex items-center gap-3">
-            <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors" aria-label="Toggle sidebar">
+            <button @click="toggleFilterPanel" class="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors" aria-label="Toggle filters">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path v-if="!sidebarOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                <path v-if="!sidebarOpen && desktopFilterOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -387,6 +400,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
               Help
             </button>
             <IngestData />
+            <button @click="navigateTo('uploader')" class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800/50 rounded-lg transition-colors" title="Windows auto uploader">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              Auto Uploader
+            </button>
             <button @click="toggleDark" class="relative p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-all duration-200" :title="isDark ? 'Light Mode' : 'Dark Mode'">
               <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="rotate-90 opacity-0" enter-to-class="rotate-0 opacity-100" leave-active-class="transition duration-150 ease-in" leave-from-class="rotate-0 opacity-100" leave-to-class="-rotate-90 opacity-0" mode="out-in">
                 <svg v-if="isDark" key="sun" class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
@@ -423,6 +440,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
                     <button @click="navigateTo('account'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                       Account Settings
+                    </button>
+                    <button @click="navigateTo('uploader'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      Windows Uploader
                     </button>
                     <button @click="showChangePassword = true; showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
@@ -461,7 +482,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
       <div v-if="activeTab === 'dashboard'" class="px-4 py-6 sm:px-6">
         <SummaryHeader />
         <div class="mt-6 flex flex-col lg:flex-row gap-6">
-          <aside class="lg:w-72 xl:w-80 lg:flex-shrink-0" :class="sidebarOpen ? 'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm' : 'hidden lg:block'">
+          <aside class="lg:flex-shrink-0 transition-all duration-300" :class="[
+            sidebarOpen ? 'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm' : 'hidden lg:block',
+            desktopFilterOpen ? 'lg:w-72 xl:w-80' : 'lg:hidden'
+          ]">
             <div v-if="sidebarOpen" class="absolute inset-0 lg:hidden" @click="sidebarOpen = false" />
             <div class="relative h-full lg:h-auto overflow-y-auto bg-gray-50 dark:bg-[#0b0f1a] lg:bg-transparent max-w-sm lg:max-w-none" :class="sidebarOpen ? 'p-4' : ''">
               <FilterPanel />

@@ -182,6 +182,18 @@ export const useBetStore = defineStore('bet', () => {
     }
   }
 
+  async function deleteArchivedStrategies(strategies: string[]) {
+    try {
+      loading.value = true
+      await api.deleteArchivedStrategies(strategies)
+      await loadArchivedStrategies()
+    } catch (e: any) {
+      error.value = e.message
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function loadArchivedStrategies() {
     try {
       archivedStrategies.value = await api.getArchivedStrategies()
@@ -296,6 +308,7 @@ export const useBetStore = defineStore('bet', () => {
     deleteBet,
     archiveStrategies,
     restoreStrategies,
+    deleteArchivedStrategies,
     loadArchivedStrategies,
     sanitizeStrategies,
     migrateDeletedToArchived,
