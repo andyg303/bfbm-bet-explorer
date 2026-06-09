@@ -32,6 +32,7 @@ from xml.etree import ElementTree as ET
 APP_NAME = "BFBM Bet Explorer Uploader"
 DEFAULT_API_URL = "https://bfbmbetexplorer.com/api"
 DEFAULT_TASK_NAME = "BFBM Bet Explorer Upload"
+DEFAULT_UPLOAD_TIMEOUT = 900
 
 if os.name == "nt":
     CONFIG_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
@@ -405,7 +406,7 @@ def run_upload(
     token: str,
     source: str,
     lookback_hours: int = 48,
-    timeout: int = 180,
+    timeout: int = DEFAULT_UPLOAD_TIMEOUT,
     settled_only: bool = True,
     log=print,
 ) -> int:
@@ -470,7 +471,7 @@ def command_run(args: argparse.Namespace) -> int:
     token = args.token or config.get("token")
     source = args.source or config.get("source")
     lookback_hours = int(args.lookback_hours or config.get("lookback_hours") or 48)
-    timeout = int(args.timeout or config.get("timeout") or 180)
+    timeout = int(args.timeout or config.get("timeout") or DEFAULT_UPLOAD_TIMEOUT)
     settled_only = not args.include_matched
 
     if not token:
@@ -753,7 +754,7 @@ class UploaderGui:
                 token=token,
                 source=config["source"],
                 lookback_hours=int(config.get("lookback_hours") or 48),
-                timeout=int(config.get("timeout") or 180),
+                timeout=int(config.get("timeout") or DEFAULT_UPLOAD_TIMEOUT),
                 settled_only=True,
                 log=self.log,
             )
