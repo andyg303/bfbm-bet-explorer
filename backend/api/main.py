@@ -2090,28 +2090,140 @@ def process_ingestion_for_user(
         db.close()
 
 
-@app.post("/automation/ingest")
-async def automation_ingest_csv(
-    file: UploadFile = File(...),
-    user: User = Depends(get_automation_user),
-):
-    """Upload a CSV from the scheduled VPS/desktop helper."""
-    tmp_path, total_rows = await save_validated_csv_upload(file)
+def run_automation_ingestion_job(
+    tmp_path: str,
+    filename: str,
+    total_rows: int,
+    user_id: int,
+    log_id: int,
+) -> None:
+    """Background worker for the scheduled uploader.
+
+    Runs the (potentially slow) ingestion + commission pass and updates the
+    pre-created IngestionLog row so the desktop helper can poll for the result.
+    This lets ``/automation/ingest`` return immediately — the upload request
+    never stays open long enough for an upstream proxy to hit its read timeout.
+    """
+    db = SessionLocal()
     try:
-        result = process_ingestion_for_user(
-            tmp_path=tmp_path,
-            filename=file.filename,
-            total_rows=total_rows,
-            user_id=user.id,
-        )
-        return {"ok": True, **result}
+        result = ingest_csv_file(tmp_path, db, user_id=user_id)
+        db_user = db.query(User).filter(User.id == user_id).first()
+        if db_user:
+            apply_commission_for_user(db, db_user)
+        warnings_list = result.get("warnings", [])
+
+        log_entry = db.query(IngestionLog).filter(IngestionLog.id == log_id).first()
+        if log_entry:
+            log_entry.status = "partial" if warnings_list else "success"
+            log_entry.rows_total = total_rows
+            log_entry.rows_inserted = result["inserted"]
+            log_entry.rows_updated = result["updated"]
+            log_entry.rows_skipped = result["skipped"]
+            log_entry.warnings = json.dumps(warnings_list) if warnings_list else None
+            db.commit()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
+        db.rollback()
+        try:
+            log_entry = db.query(IngestionLog).filter(IngestionLog.id == log_id).first()
+            if log_entry:
+                log_entry.status = "error"
+                log_entry.error_message = str(e)[:2000]
+                db.commit()
+        except Exception:
+            db.rollback()
     finally:
+        db.close()
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
+
+
+@app.post("/automation/ingest", status_code=status.HTTP_202_ACCEPTED)
+async def automation_ingest_csv(
+    file: UploadFile = File(...),
+    user: User = Depends(get_automation_user),
+):
+    """Accept a CSV from the scheduled VPS/desktop helper and process it
+    asynchronously.
+
+    Large bet histories can take several minutes to ingest. Rather than holding
+    the HTTP connection open for the whole job (which an upstream nginx will cut
+    off at its ``proxy_read_timeout``), we persist the file, create an
+    ``IngestionLog`` row marked ``processing``, kick off a background thread, and
+    return a ``job_id`` straight away. The helper polls
+    ``GET /automation/ingest/{job_id}`` until the job finishes.
+    """
+    tmp_path, total_rows = await save_validated_csv_upload(file)
+
+    db = SessionLocal()
+    try:
+        log_entry = IngestionLog(
+            user_id=user.id,
+            filename=file.filename,
+            status="processing",
+            rows_total=total_rows,
+        )
+        db.add(log_entry)
+        db.commit()
+        db.refresh(log_entry)
+        job_id = log_entry.id
+    except Exception as e:
+        db.rollback()
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise HTTPException(status_code=500, detail=f"Could not queue ingestion: {e}")
+    finally:
+        db.close()
+
+    thread = threading.Thread(
+        target=run_automation_ingestion_job,
+        args=(tmp_path, file.filename, total_rows, user.id, job_id),
+        daemon=True,
+    )
+    thread.start()
+
+    return {"ok": True, "job_id": job_id, "status": "processing"}
+
+
+@app.get("/automation/ingest/{job_id}")
+async def automation_ingest_status(
+    job_id: int,
+    user: User = Depends(get_automation_user),
+    db: Session = Depends(get_db),
+):
+    """Report the status of an async automation ingestion job so the desktop
+    helper can poll until processing completes."""
+    log_entry = (
+        db.query(IngestionLog)
+        .filter(IngestionLog.id == job_id, IngestionLog.user_id == user.id)
+        .first()
+    )
+    if not log_entry:
+        raise HTTPException(status_code=404, detail="Ingestion job not found")
+
+    warnings_list = []
+    if log_entry.warnings:
+        try:
+            warnings_list = json.loads(log_entry.warnings)
+        except (ValueError, TypeError):
+            warnings_list = []
+
+    return {
+        "job_id": log_entry.id,
+        "status": log_entry.status,
+        "done": log_entry.status in ("success", "partial", "error"),
+        "filename": log_entry.filename,
+        "rows_total": log_entry.rows_total or 0,
+        "inserted": log_entry.rows_inserted or 0,
+        "updated": log_entry.rows_updated or 0,
+        "skipped": log_entry.rows_skipped or 0,
+        "warnings": warnings_list,
+        "error": log_entry.error_message,
+        "created_at": log_entry.created_at.isoformat() if log_entry.created_at else None,
+    }
 
 
 @app.post("/ingest")

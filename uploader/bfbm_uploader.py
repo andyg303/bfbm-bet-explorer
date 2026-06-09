@@ -20,6 +20,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -340,6 +341,73 @@ def upload_csv(api_url: str, token: str, filename: str, payload: bytes, timeout:
         raise RuntimeError(f"Upload failed with HTTP {exc.code}: {detail}") from exc
 
 
+def get_job_status(api_url: str, token: str, job_id: Any, timeout: int = 60) -> dict[str, Any]:
+    validate_api_url(api_url)
+    endpoint = f"{api_url.rstrip('/')}/automation/ingest/{job_id}"
+    request = urllib.request.Request(
+        endpoint,
+        method="GET",
+        headers={
+            "Accept": "application/json",
+            "X-BFBM-Automation-Token": token,
+            "User-Agent": "BFBM-Bet-Explorer-Uploader/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Status check failed with HTTP {exc.code}: {detail}") from exc
+
+
+def wait_for_job(
+    api_url: str,
+    token: str,
+    job_id: Any,
+    timeout: int = DEFAULT_UPLOAD_TIMEOUT,
+    poll_interval: int = 5,
+    log=print,
+) -> dict[str, Any]:
+    """Poll the server until an async ingestion job finishes.
+
+    Each poll is a quick request, so no single connection stays open long enough
+    to be killed by an upstream proxy timeout — however long the server takes.
+    """
+    deadline = time.monotonic() + timeout
+    last_note = time.monotonic()
+    consecutive_errors = 0
+    while True:
+        try:
+            status = get_job_status(api_url, token, job_id)
+            consecutive_errors = 0
+        except Exception as exc:
+            consecutive_errors += 1
+            if consecutive_errors >= 5:
+                raise RuntimeError(
+                    f"Lost contact with the server while waiting for job {job_id}: {exc}"
+                ) from exc
+            time.sleep(poll_interval)
+            continue
+
+        state = status.get("status")
+        if status.get("done") or state in ("success", "partial", "error"):
+            if state == "error":
+                raise RuntimeError(status.get("error") or "Server reported an ingestion error")
+            return status
+
+        now = time.monotonic()
+        if now - last_note >= 20:
+            log(f"  …still processing on the server (job {job_id})")
+            last_note = now
+        if now >= deadline:
+            raise RuntimeError(
+                f"Timed out after {timeout}s waiting for the server to finish "
+                f"(job {job_id} still '{state}')."
+            )
+        time.sleep(poll_interval)
+
+
 def api_json_request(
     api_url: str,
     path: str,
@@ -424,14 +492,29 @@ def run_upload(
 
         payload = csv_bytes(headers, filtered)
         upload_name = f"{path.stem}-last-{lookback_hours}h.csv"
-        result = upload_csv(api_url, token, upload_name, payload, timeout)
+        accepted = upload_csv(api_url, token, upload_name, payload, timeout)
+
+        job_id = accepted.get("job_id") if isinstance(accepted, dict) else None
+        if job_id is None:
+            # Older server that processed the upload synchronously.
+            result = accepted
+        else:
+            log(
+                f"{path.name}: uploaded {len(filtered)} rows; "
+                f"server is processing (job {job_id})…"
+            )
+            result = wait_for_job(api_url, token, job_id, timeout=timeout, log=log)
+
         uploaded += len(filtered)
         log(
-            f"{path.name}: uploaded {len(filtered)} rows; "
+            f"{path.name}: done — "
             f"inserted={result.get('inserted', 0)} "
             f"updated={result.get('updated', 0)} "
             f"skipped={result.get('skipped', 0)}"
         )
+        warnings = result.get("warnings") or []
+        if warnings:
+            log(f"{path.name}: {len(warnings)} warning(s); first: {warnings[0]}")
 
     if uploaded == 0:
         log("Nothing to upload.")
