@@ -19,6 +19,7 @@ import re
 import secrets
 import subprocess
 import sys
+import ssl
 import threading
 import time
 import urllib.error
@@ -307,6 +308,29 @@ def find_default_bfbm_history() -> Path | None:
     return None
 
 
+def _https_open(request: urllib.request.Request, timeout: int):
+    """Open an HTTPS request with a working SSL context on Windows VPS/server environments.
+
+    On some Windows Server installations Python cannot locate the system CA
+    bundle, causing ``CERTIFICATE_VERIFY_FAILED``.  We prefer ``certifi``'s
+    bundled CA store (included in the PyInstaller build), then fall back to the
+    default context which works on most systems.
+    """
+    try:
+        import certifi  # bundled by PyInstaller spec
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        ctx = ssl.create_default_context()
+        if sys.platform == "win32":
+            try:
+                ctx.load_default_certs()
+            except Exception:
+                pass
+    https_handler = urllib.request.HTTPSHandler(context=ctx)
+    opener = urllib.request.build_opener(https_handler)
+    return opener.open(request, timeout=timeout)
+
+
 def upload_csv(api_url: str, token: str, filename: str, payload: bytes, timeout: int) -> dict[str, Any]:
     validate_api_url(api_url)
     endpoint = f"{api_url.rstrip('/')}/automation/ingest"
@@ -334,7 +358,7 @@ def upload_csv(api_url: str, token: str, filename: str, payload: bytes, timeout:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _https_open(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -354,7 +378,7 @@ def get_job_status(api_url: str, token: str, job_id: Any, timeout: int = 60) -> 
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _https_open(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -427,7 +451,7 @@ def api_json_request(
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(endpoint, data=body, method="POST", headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with _https_open(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
@@ -611,7 +635,14 @@ def command_install_task(args: argparse.Namespace) -> int:
         task_command(),
         "/F",
     ]
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        output = (exc.stderr or exc.stdout or "").strip()
+        raise RuntimeError(
+            f"Task Scheduler failed (exit {exc.returncode}){': ' + output if output else '.'}\n\n"
+            "Tip: try running the uploader as Administrator (right-click → Run as administrator)."
+        ) from exc
     print(f"Installed daily task '{task_name}' at {run_time}")
     return 0
 
@@ -662,6 +693,9 @@ class UploaderGui:
 
         title = self.ttk.Label(main, text=APP_NAME, font=("Segoe UI", 16, "bold"))
         title.grid(row=0, column=0, sticky="w")
+        self.ttk.Button(main, text="? Help", command=self.show_help).grid(
+            row=0, column=0, sticky="e"
+        )
         subtitle = self.ttk.Label(
             main,
             text="Connect your dashboard account, choose the BFBM/autosave CSV, then install the daily upload task.",
@@ -719,6 +753,123 @@ class UploaderGui:
         scroll.grid(row=0, column=1, sticky="ns")
         self.log_text.configure(yscrollcommand=scroll.set)
         self.log(f"Config path: {CONFIG_PATH}")
+
+    def show_help(self) -> None:
+        win = self.tk.Toplevel(self.root)
+        win.title(f"{APP_NAME} — Help")
+        win.geometry("640x600")
+        win.resizable(True, True)
+
+        frame = self.ttk.Frame(win, padding=12)
+        frame.pack(fill="both", expand=True)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        text = self.tk.Text(frame, wrap="word", padx=8, pady=8,
+                            font=("Segoe UI", 9), relief="flat",
+                            background=win.cget("background"))
+        text.grid(row=0, column=0, sticky="nsew")
+        sb = self.ttk.Scrollbar(frame, command=text.yview)
+        sb.grid(row=0, column=1, sticky="ns")
+        text.configure(yscrollcommand=sb.set)
+
+        text.tag_configure("h1", font=("Segoe UI", 11, "bold"), spacing3=4)
+        text.tag_configure("h2", font=("Segoe UI", 9, "bold"), spacing1=8, spacing3=2)
+        text.tag_configure("important", font=("Segoe UI", 9, "bold"),
+                           foreground="#1a6e1a", spacing1=4, spacing3=4)
+        text.tag_configure("warn", font=("Segoe UI", 9, "bold"),
+                           foreground="#a05000", spacing1=4)
+        text.tag_configure("body", font=("Segoe UI", 9), spacing3=3)
+        text.tag_configure("bullet", font=("Segoe UI", 9), lmargin1=18, lmargin2=28, spacing3=3)
+
+        def h1(t):  text.insert("end", t + "\n", "h1")
+        def h2(t):  text.insert("end", t + "\n", "h2")
+        def imp(t): text.insert("end", t + "\n", "important")
+        def warn(t):text.insert("end", t + "\n", "warn")
+        def p(t):   text.insert("end", t + "\n", "body")
+        def b(t):   text.insert("end", "  • " + t + "\n", "bullet")
+
+        h1("Quick-start checklist")
+        b("Step 1 — Enter your BFBM Bet Explorer email and password, then click Connect.")
+        b("Step 2 — Click Auto to find your BFBM history file (or use File / Folder).")
+        b("Step 3 — Set the daily upload time (e.g. 02:15 for 2:15 AM).")
+        b("Step 4 — Click Install Daily Task. Once installed you can close this app.")
+        p("")
+
+        imp("✔  After clicking 'Install Daily Task' you can close this app.")
+        p("The task is registered with Windows Task Scheduler, which is a system service "
+          "that runs independently of this application. Uploads will happen automatically "
+          "every day at the configured time — even when the app is closed, the machine is "
+          "locked, or no user is actively logged in.\n"
+          "Only open the app again if you need to change settings or run a manual upload.")
+        p("")
+
+        h1("Section guide")
+
+        h2("1. Connect Account")
+        b("API URL — the address of your BFBM Bet Explorer dashboard. "
+          "The default (https://bfbmbetexplorer.com/api) is correct; do not change it.")
+        b("Email / Password — your dashboard login credentials. "
+          "Your password is never stored on disk; only a secure upload token is saved.")
+        b("Connect — logs you in and generates an upload token. "
+          "Once connected the \"Connected (...)\" label shows the token is active. "
+          "You only need to reconnect if you revoke the token from your Account Settings.")
+        p("")
+
+        h2("2. CSV Source")
+        b("Auto — searches the default BFBM V3 folder for uk_bets_history.gz automatically. "
+          "Use this first; it works for most standard BFBM installations.")
+        b("File — manually select a single CSV or .gz history file.")
+        b("Folder — select a folder; every CSV file inside it will be uploaded.")
+        p("The uploader reads only rows settled within the Lookback window so uploads "
+          "are fast even for large history files.")
+        p("")
+
+        h2("3. Schedule")
+        b("Daily time (HH:MM) — the time the automatic task runs each day (24-hour clock). "
+          "2:15 AM is recommended as BFBM is unlikely to be placing bets at that hour.")
+        b("Lookback hours — how far back in time to include settled bets (default 48 h). "
+          "Increase this if you restart your VPS infrequently or want a longer safety net. "
+          "528 h (22 days) is safe for very infrequent uploads.")
+        p("")
+
+        h2("Buttons")
+        b("Save Settings — saves all fields to disk without uploading anything.")
+        b("Run Upload Now — immediately uploads recent bets. "
+          "Use this to verify everything is working before relying on the daily task.")
+        b("Install Daily Task — registers the task with Windows Task Scheduler. "
+          "You can close the app straight after this.")
+        p("")
+
+        h1("Troubleshooting")
+
+        warn("'Install Daily Task' fails with a non-zero exit status")
+        p("This usually means Windows Task Scheduler cannot be accessed from your current "
+          "session (common on Virtual Desktop / RDP sessions inside a VPS).")
+        b("Try right-clicking the .exe and choosing 'Run as administrator', "
+          "then press 'Install Daily Task' again.")
+        b("If you are running inside a Virtual Desktop (e.g. multiple BFBM instances via "
+          "RDP inside a VPS), run the uploader directly on the host VPS desktop instead "
+          "— Task Scheduler is a host-level service and cannot be reached from a "
+          "nested virtual desktop session.")
+        b("As a fallback, open Windows Task Scheduler (taskschd.msc) on the host machine "
+          "and create the task manually with the action: "
+          '\"BFBM Bet Explorer Uploader.exe\" run')
+        p("")
+
+        warn("SSL: CERTIFICATE_VERIFY_FAILED")
+        p("This can occur on some Windows Server / VPS environments where Python cannot "
+          "locate the system CA certificate store. Download the latest version of the "
+          "uploader from your dashboard — newer builds bundle the required certificates.")
+        p("")
+
+        warn("'Not connected' after reopening the app")
+        p("Your token is saved between sessions. If it shows 'Not connected', the token "
+          "may have been revoked from your Account Settings page. "
+          "Just enter your email and password and click Connect again.")
+
+        text.configure(state="disabled")
+        self.ttk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 12))
 
     def log(self, message: str) -> None:
         append_log(message)
@@ -870,8 +1021,20 @@ class UploaderGui:
                 task_command(),
                 "/F",
             ]
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as exc:
+                output = (exc.stderr or exc.stdout or "").strip()
+                raise RuntimeError(
+                    f"Task Scheduler failed (exit {exc.returncode}){': ' + output if output else '.'}\n\n"
+                    "Tip: try right-clicking the .exe and choosing \"Run as administrator\", "
+                    "then press \"Install Daily Task\" again."
+                ) from exc
             self.log(f"Installed daily upload task for {config['time']}.")
+            self.log(
+                "Note: the app can now be closed — the task runs automatically "
+                "via Windows Task Scheduler even when the app is not open."
+            )
 
         self.run_background(work)
 

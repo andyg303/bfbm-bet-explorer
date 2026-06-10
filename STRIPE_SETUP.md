@@ -41,6 +41,19 @@ Still in Stripe Dashboard (test mode):
    STRIPE_PRICE_12MONTH=price_XXXXXXXXXXXXXXXXXXXXXXXX
    ```
 
+### Optional — Referral Credit Coupon
+
+Referral credits are tracked inside the app. When a user has a credit, checkout
+automatically applies a £10 Stripe coupon.
+
+By default the backend will create/reuse this coupon ID:
+```
+STRIPE_REFERRAL_COUPON_ID=bfbm-referral-10-gbp
+```
+
+You can override that value if you prefer to create the coupon manually in
+Stripe first. The coupon should be £10 off, GBP, duration once.
+
 ---
 
 ## Step 3 — Install the Stripe CLI (for local webhook testing)

@@ -1,12 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
+import certifi
 
 
 a = Analysis(
     ['bfbm_uploader.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[
+        (certifi.where(), 'certifi'),  # CA bundle for HTTPS on Windows VPS
+    ],
+    hiddenimports=['certifi'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

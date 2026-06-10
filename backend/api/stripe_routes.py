@@ -19,6 +19,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db, User
 from api.auth import get_current_user
+from api.referrals import award_referrer_credit, mark_referral_credit_redeemed
 
 # ---------------------------------------------------------------------------
 # Stripe config
@@ -30,6 +31,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3080")
 # Price IDs set up in Stripe Dashboard (or created via API)
 PRICE_6MONTH = os.getenv("STRIPE_PRICE_6MONTH", "")
 PRICE_12MONTH = os.getenv("STRIPE_PRICE_12MONTH", "")
+REFERRAL_COUPON_ID = os.getenv("STRIPE_REFERRAL_COUPON_ID") or "bfbm-referral-10-gbp"
 
 PLAN_MAP = {
     "6month": {"price_id": PRICE_6MONTH, "months": 6, "label": "6 Month Access"},
@@ -49,6 +51,21 @@ class CreateCheckoutRequest(BaseModel):
 class CheckoutResponse(BaseModel):
     checkout_url: str
     session_id: str
+    referral_credit_applied: bool = False
+
+
+def _referral_coupon_id() -> str:
+    try:
+        stripe.Coupon.retrieve(REFERRAL_COUPON_ID)
+    except stripe.error.InvalidRequestError:
+        stripe.Coupon.create(
+            id=REFERRAL_COUPON_ID,
+            name="Referral credit - £10 off",
+            amount_off=1000,
+            currency="gbp",
+            duration="once",
+        )
+    return REFERRAL_COUPON_ID
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +100,13 @@ def create_checkout_session(
         user.stripe_customer_id = customer_id
         db.commit()
 
-    session = stripe.checkout.Session.create(
+    referral_credit_applied = (user.referral_credit_balance or 0) > 0
+    metadata = {
+        "user_id": str(user.id),
+        "plan": req.plan,
+        "referral_credit_applied": "1" if referral_credit_applied else "0",
+    }
+    session_args = dict(
         customer=customer_id,
         mode="subscription",  # works with recurring prices
         payment_method_types=["card"],
@@ -91,24 +114,28 @@ def create_checkout_session(
             "price": plan["price_id"],
             "quantity": 1,
         }],
-        metadata={
-            "user_id": str(user.id),
-            "plan": req.plan,
-        },
+        metadata=metadata,
         subscription_data={
-            "metadata": {
-                "user_id": str(user.id),
-                "plan": req.plan,
-            },
+            "metadata": metadata,
         },
         success_url=f"{FRONTEND_URL}/dashboard?payment=success&session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{FRONTEND_URL}/pricing?payment=cancelled",
     )
+    if referral_credit_applied:
+        session_args["discounts"] = [{"coupon": _referral_coupon_id()}]
+
+    session = stripe.checkout.Session.create(**session_args)
 
     user.stripe_checkout_session_id = session.id
+    if referral_credit_applied:
+        user.referral_pending_checkout_session_id = session.id
     db.commit()
 
-    return CheckoutResponse(checkout_url=session.url, session_id=session.id)
+    return CheckoutResponse(
+        checkout_url=session.url,
+        session_id=session.id,
+        referral_credit_applied=referral_credit_applied,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +253,9 @@ def _activate_subscription(session: dict, db: Session):
         user.subscription_start = now
     user.subscription_expires = base + relativedelta(months=plan["months"])
     user.stripe_customer_id = session.get("customer", user.stripe_customer_id)
+    if metadata.get("referral_credit_applied") == "1":
+        mark_referral_credit_redeemed(user, session.get("id"))
+    award_referrer_credit(user, db)
     db.commit()
 
 

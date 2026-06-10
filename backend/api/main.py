@@ -63,6 +63,12 @@ from api.auth import (
 from jose import JWTError, jwt
 from api.stripe_routes import router as stripe_router
 from api.admin import router as admin_router
+from api.referrals import (
+    router as referrals_router,
+    ensure_referral_code,
+    find_referrer_by_code,
+    generate_referral_code,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -149,6 +155,26 @@ async def lifespan(app):
             conn.execute(text("ALTER TABLE users ADD COLUMN commission_rate FLOAT DEFAULT 2.0 NOT NULL"))
         if 'commission_rate_aus_nz' not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN commission_rate_aus_nz FLOAT DEFAULT 5.0 NOT NULL"))
+        if 'referral_code' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN referral_code VARCHAR"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_referral_code ON users (referral_code)"))
+        if 'referred_by_user_id' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN referred_by_user_id INTEGER REFERENCES users(id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_referred_by_user_id ON users (referred_by_user_id)"))
+        if 'referral_rewarded_at' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN referral_rewarded_at TIMESTAMP"))
+        if 'referral_credit_balance' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN referral_credit_balance INTEGER DEFAULT 0 NOT NULL"))
+        if 'referral_credits_awarded' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN referral_credits_awarded INTEGER DEFAULT 0 NOT NULL"))
+        if 'referral_credits_redeemed' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN referral_credits_redeemed INTEGER DEFAULT 0 NOT NULL"))
+        if 'referral_pending_checkout_session_id' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN referral_pending_checkout_session_id VARCHAR"))
+        if 'referral_last_redeemed_session_id' not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN referral_last_redeemed_session_id VARCHAR"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_referral_code ON users (referral_code)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_referred_by_user_id ON users (referred_by_user_id)"))
 
         # ── Bet commission column ──
         if 'commission_paid' not in columns:
@@ -198,6 +224,7 @@ async def lifespan(app):
 app = FastAPI(title="BFBM Bet Explorer API", lifespan=lifespan, docs_url=None, redoc_url=None)
 app.include_router(stripe_router)
 app.include_router(admin_router)
+app.include_router(referrals_router)
 
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -377,6 +404,11 @@ def _user_dict(user: User) -> dict:
         ),
         "commission_rate": user.commission_rate if user.commission_rate is not None else 2.0,
         "commission_rate_aus_nz": user.commission_rate_aus_nz if user.commission_rate_aus_nz is not None else 5.0,
+        "referral_code": user.referral_code,
+        "referred_by_user_id": user.referred_by_user_id,
+        "referral_credit_balance": user.referral_credit_balance or 0,
+        "referral_credits_awarded": user.referral_credits_awarded or 0,
+        "referral_credits_redeemed": user.referral_credits_redeemed or 0,
     }
 
 
@@ -553,10 +585,15 @@ def register(request: Request, req: RegisterRequest, db: Session = Depends(get_d
     safe_display_name = sanitize_display_name(
         req.display_name or req.email.split("@")[0]
     )
+    referrer = find_referrer_by_code(db, req.referral_code)
+    if req.referral_code and not referrer:
+        raise HTTPException(status_code=400, detail="Referral code not found")
     user = User(
         email=req.email.lower().strip(),
         password_hash=get_password_hash(req.password),
         display_name=safe_display_name,
+        referred_by_user_id=referrer.id if referrer else None,
+        referral_code=generate_referral_code(db),
     )
     db.add(user)
     db.commit()
@@ -660,8 +697,9 @@ def refresh_token(req: RefreshRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/auth/me")
-def get_me(user: User = Depends(get_current_user)):
+def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Return the authenticated user's profile."""
+    ensure_referral_code(user, db)
     d = _user_dict(user)
     d["created_at"] = user.created_at.isoformat() if user.created_at else None
     return d

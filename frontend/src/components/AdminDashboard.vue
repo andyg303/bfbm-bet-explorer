@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { getAdminStats, getAdminUsers, getAdminIngestionLogs, toggleUserActive, unlockUser } from '../services/api'
+import { adjustReferralCredits, getAdminStats, getAdminUsers, getAdminIngestionLogs, getAdminReferrals, toggleUserActive, unlockUser } from '../services/api'
 
 const emit = defineEmits<{ (e: 'navigate', page: string): void }>()
 
 // ─── State ───────────────────────────────────────────────────────────────────
-const activeTab = ref<'overview' | 'users' | 'logs'>('overview')
+const activeTab = ref<'overview' | 'users' | 'logs' | 'referrals'>('overview')
 const loading = ref(false)
 const error = ref('')
 
@@ -27,6 +27,9 @@ const logsTotal = ref(0)
 const logsPage = ref(1)
 const logsStatusFilter = ref('')
 const expandedLogId = ref<number | null>(null)
+
+// Referrals
+const referrals = ref<any>(null)
 
 // ─── Loaders ─────────────────────────────────────────────────────────────────
 async function loadStats() {
@@ -73,6 +76,17 @@ async function loadLogs() {
   }
 }
 
+async function loadReferrals() {
+  loading.value = true
+  try {
+    referrals.value = await getAdminReferrals()
+  } catch (e: any) {
+    error.value = e.response?.data?.detail || 'Failed to load referrals'
+  } finally {
+    loading.value = false
+  }
+}
+
 // ─── Actions ─────────────────────────────────────────────────────────────────
 async function handleToggleActive(userId: number) {
   try {
@@ -94,6 +108,21 @@ async function handleUnlock(userId: number) {
     }
   } catch (e: any) {
     error.value = e.response?.data?.detail || 'Action failed'
+  }
+}
+
+async function handleAdjustCredits(userId: number, credits: number) {
+  try {
+    const result = await adjustReferralCredits(userId, credits)
+    const u = users.value.find((u: any) => u.id === userId)
+    if (u) {
+      u.referral_credit_balance = result.referral_credit_balance
+      u.referral_credits_awarded = result.referral_credits_awarded
+      u.referral_credits_redeemed = result.referral_credits_redeemed
+    }
+    await loadReferrals()
+  } catch (e: any) {
+    error.value = e.response?.data?.detail || 'Credit adjustment failed'
   }
 }
 
@@ -130,6 +159,7 @@ onMounted(async () => {
   await loadStats()
   await loadUsers()
   await loadLogs()
+  await loadReferrals()
 })
 </script>
 
@@ -164,7 +194,7 @@ onMounted(async () => {
     <!-- Tab nav -->
     <div class="px-4 sm:px-6 pt-4">
       <div class="inline-flex rounded-xl bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 p-1 gap-1">
-        <button v-for="tab in (['overview', 'users', 'logs'] as const)" :key="tab"
+        <button v-for="tab in (['overview', 'users', 'referrals', 'logs'] as const)" :key="tab"
           @click="activeTab = tab"
           :class="[
             'px-4 py-2 text-sm font-medium rounded-lg transition-all',
@@ -172,7 +202,7 @@ onMounted(async () => {
               ? 'bg-gradient-to-r from-rose-500 to-orange-500 text-white shadow-sm'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           ]">
-          {{ tab === 'overview' ? '📊 Overview' : tab === 'users' ? '👥 Users' : '📋 Ingestion Logs' }}
+          {{ tab === 'overview' ? '📊 Overview' : tab === 'users' ? '👥 Users' : tab === 'referrals' ? '🎁 Referrals' : '📋 Ingestion Logs' }}
         </button>
       </div>
     </div>
@@ -252,6 +282,9 @@ onMounted(async () => {
                   <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200" @click="sortUsers('subscription_status')">
                     Subscription {{ usersSort === 'subscription_status' ? (usersSortOrder === 'desc' ? '↓' : '↑') : '' }}
                   </th>
+                  <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 text-right" @click="sortUsers('referral_credit_balance')">
+                    Credits {{ usersSort === 'referral_credit_balance' ? (usersSortOrder === 'desc' ? '↓' : '↑') : '' }}
+                  </th>
                   <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 text-right" @click="sortUsers('bet_count')">
                     Bets {{ usersSort === 'bet_count' ? (usersSortOrder === 'desc' ? '↓' : '↑') : '' }}
                   </th>
@@ -279,6 +312,13 @@ onMounted(async () => {
                       'bg-rose-500/10 text-rose-400 border border-rose-500/20': u.subscription_status === 'expired',
                     }">{{ u.subscription_status }}</span>
                     <span v-if="u.subscription_plan" class="ml-1 text-xs text-gray-400">{{ u.subscription_plan }}</span>
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <div class="flex items-center justify-end gap-1.5">
+                      <button @click="handleAdjustCredits(u.id, -1)" :disabled="!u.referral_credit_balance" title="Remove referral credit" class="px-2 py-1 rounded-lg text-xs border border-gray-200 dark:border-gray-700 text-gray-500 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-800/50">-</button>
+                      <span class="min-w-6 font-mono font-semibold text-emerald-500">{{ u.referral_credit_balance || 0 }}</span>
+                      <button @click="handleAdjustCredits(u.id, 1)" title="Award referral credit" class="px-2 py-1 rounded-lg text-xs border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10">+</button>
+                    </div>
                   </td>
                   <td class="px-4 py-3 text-right font-mono text-gray-900 dark:text-white">{{ u.bet_count.toLocaleString() }}</td>
                   <td class="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{{ formatDate(u.created_at) }}</td>
@@ -314,6 +354,119 @@ onMounted(async () => {
             <span class="text-sm text-gray-400">Page {{ usersPage }} of {{ usersTotalPages }}</span>
             <button @click="usersPage = Math.min(usersTotalPages, usersPage + 1); loadUsers()" :disabled="usersPage >= usersTotalPages"
               class="px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors">Next →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════ Referrals Tab ═══════ -->
+      <div v-if="activeTab === 'referrals' && referrals" class="space-y-6">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div class="glass-card p-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Referral Signups</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ referrals.stats.total_referral_signups }}</p>
+          </div>
+          <div class="glass-card p-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Qualified</p>
+            <p class="text-2xl font-bold text-emerald-500 mt-1">{{ referrals.stats.qualified_referrals }}</p>
+          </div>
+          <div class="glass-card p-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pending</p>
+            <p class="text-2xl font-bold text-amber-500 mt-1">{{ referrals.stats.pending_referrals }}</p>
+          </div>
+          <div class="glass-card p-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Open Credits</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ referrals.stats.total_credit_balance }}</p>
+          </div>
+          <div class="glass-card p-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Redeemed</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ referrals.stats.total_credits_redeemed }}</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-6">
+          <div class="glass-card overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-800/60 flex items-center justify-between">
+              <h2 class="font-semibold text-gray-900 dark:text-white">Top referrers</h2>
+              <span class="text-sm text-gray-400">{{ referrals.top_referrers.length }} users</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-gray-200 dark:border-gray-800/60 text-left">
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">User</th>
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400 text-right">Refs</th>
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400 text-right">Paid</th>
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400 text-right">Credits</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in referrals.top_referrers" :key="r.id" class="border-b border-gray-100 dark:border-gray-800/30">
+                    <td class="px-4 py-3">
+                      <div class="font-medium text-gray-900 dark:text-white">{{ r.display_name || r.email }}</div>
+                      <div class="text-xs text-gray-400">{{ r.email }}</div>
+                      <div class="text-[10px] font-mono text-teal-500">{{ r.referral_code || 'No code' }}</div>
+                    </td>
+                    <td class="px-4 py-3 text-right font-mono">{{ r.referral_count }}</td>
+                    <td class="px-4 py-3 text-right font-mono text-emerald-500">{{ r.qualified_referral_count }}</td>
+                    <td class="px-4 py-3 text-right">
+                      <div class="flex items-center justify-end gap-1.5">
+                        <button @click="handleAdjustCredits(r.id, -1)" :disabled="!r.referral_credit_balance" class="px-2 py-1 rounded-lg text-xs border border-gray-200 dark:border-gray-700 text-gray-500 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-800/50">-</button>
+                        <span class="min-w-6 font-mono font-semibold text-emerald-500">{{ r.referral_credit_balance }}</span>
+                        <button @click="handleAdjustCredits(r.id, 1)" class="px-2 py-1 rounded-lg text-xs border border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/10">+</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="referrals.top_referrers.length === 0">
+                    <td colspan="4" class="px-4 py-6 text-center text-gray-500">No referral activity yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="glass-card overflow-hidden">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-800/60 flex items-center justify-between">
+              <h2 class="font-semibold text-gray-900 dark:text-white">Referral attribution</h2>
+              <span class="text-sm text-gray-400">{{ referrals.referrals.length }} latest</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-gray-200 dark:border-gray-800/60 text-left">
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Referred user</th>
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Referrer</th>
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Joined</th>
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Reward</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in referrals.referrals" :key="r.referred_user_id" class="border-b border-gray-100 dark:border-gray-800/30">
+                    <td class="px-4 py-3">
+                      <div class="font-medium text-gray-900 dark:text-white">{{ r.referred_display_name || r.referred_email }}</div>
+                      <div class="text-xs text-gray-400">{{ r.referred_email }}</div>
+                      <span class="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize" :class="{
+                        'bg-emerald-500/10 text-emerald-400': r.referred_subscription_status === 'active',
+                        'bg-gray-500/10 text-gray-400': r.referred_subscription_status === 'inactive',
+                        'bg-amber-500/10 text-amber-400': r.referred_subscription_status === 'cancelled',
+                        'bg-rose-500/10 text-rose-400': r.referred_subscription_status === 'expired',
+                      }">{{ r.referred_subscription_status }}</span>
+                    </td>
+                    <td class="px-4 py-3">
+                      <div class="font-medium text-gray-900 dark:text-white">{{ r.referrer_display_name || r.referrer_email }}</div>
+                      <div class="text-xs text-gray-400">{{ r.referrer_email }}</div>
+                    </td>
+                    <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{{ formatDate(r.referred_created_at) }}</td>
+                    <td class="px-4 py-3">
+                      <span v-if="r.referral_rewarded_at" class="text-emerald-500 font-medium">Awarded</span>
+                      <span v-else class="text-amber-500">Pending</span>
+                    </td>
+                  </tr>
+                  <tr v-if="referrals.referrals.length === 0">
+                    <td colspan="4" class="px-4 py-6 text-center text-gray-500">No referred signups yet.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

@@ -55,6 +55,16 @@ class User(Base):
     stripe_customer_id = Column(String, nullable=True, unique=True, index=True)
     stripe_checkout_session_id = Column(String, nullable=True)
 
+    # Referrals
+    referral_code = Column(String, nullable=True, unique=True, index=True)
+    referred_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    referral_rewarded_at = Column(DateTime, nullable=True)
+    referral_credit_balance = Column(Integer, default=0, nullable=False, server_default='0')
+    referral_credits_awarded = Column(Integer, default=0, nullable=False, server_default='0')
+    referral_credits_redeemed = Column(Integer, default=0, nullable=False, server_default='0')
+    referral_pending_checkout_session_id = Column(String, nullable=True)
+    referral_last_redeemed_session_id = Column(String, nullable=True)
+
     bets = relationship("Bet", back_populates="owner", lazy="dynamic")
     automation_tokens = relationship("AutomationToken", back_populates="user", lazy="dynamic")
 

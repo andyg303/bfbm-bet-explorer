@@ -23,13 +23,14 @@ import AdminDashboard from './components/AdminDashboard.vue'
 import LoadingOverlay from './components/LoadingOverlay.vue'
 import ContactPage from './components/ContactPage.vue'
 import UploaderPage from './components/UploaderPage.vue'
+import ReferralPage from './components/ReferralPage.vue'
 
 const betStore = useBetStore()
 const auth = useAuthStore()
 const { isDark, toggle: toggleDark } = useDarkMode()
 
 // ─── Page routing (SPA-style with real URLs) ────────────────────────────────
-type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard' | 'forgot-password' | 'reset-password' | 'account' | 'admin' | 'contact' | 'uploader'
+type AppPage = 'landing' | 'login' | 'register' | 'pricing' | 'dashboard' | 'forgot-password' | 'reset-password' | 'account' | 'admin' | 'contact' | 'uploader' | 'referrals'
 const currentPage = ref<AppPage>('landing')
 const authInitialMode = ref<'login' | 'register' | 'forgot' | 'reset'>('login')
 const resetTokenFromUrl = ref('')
@@ -47,6 +48,7 @@ const PAGE_PATHS: Record<AppPage, string> = {
   admin: '/admin',
   contact: '/contact',
   uploader: '/uploader',
+  referrals: '/referrals',
 }
 
 function pageFromPath(path: string): AppPage {
@@ -67,6 +69,10 @@ function determineInitialPage(): AppPage {
   // Respect the current URL path first
   const urlPage = pageFromPath(window.location.pathname)
 
+  if (urlPage === 'login' || urlPage === 'register') {
+    authInitialMode.value = urlPage
+    return urlPage
+  }
   // Handle password reset link from email
   if (urlPage === 'reset-password') {
     const token = params.get('token')
@@ -83,6 +89,10 @@ function determineInitialPage(): AppPage {
     if (!auth.isAuthenticated) return 'login'
     if (!auth.hasActiveSubscription) return 'pricing'
     return urlPage
+  }
+  if (urlPage === 'referrals') {
+    if (!auth.isAuthenticated) return 'login'
+    return 'referrals'
   }
   // Guard: admin page requires auth + admin
   if (urlPage === 'admin') {
@@ -104,17 +114,26 @@ function determineInitialPage(): AppPage {
 }
 
 function navigateTo(page: string, replace = false) {
-  if (page === 'login' || page === 'register') {
-    authInitialMode.value = page as 'login' | 'register'
-    currentPage.value = page as AppPage
-  } else if (page === 'forgot-password') {
+  let targetPage = page as AppPage
+  if ((targetPage === 'dashboard' || targetPage === 'account' || targetPage === 'uploader') && (!auth.isAuthenticated || !auth.hasActiveSubscription)) {
+    targetPage = auth.isAuthenticated ? 'pricing' : 'login'
+  } else if (targetPage === 'referrals' && !auth.isAuthenticated) {
+    targetPage = 'login'
+  } else if (targetPage === 'admin' && (!auth.isAuthenticated || !auth.user?.is_admin)) {
+    targetPage = !auth.isAuthenticated ? 'login' : auth.hasActiveSubscription ? 'dashboard' : 'pricing'
+  }
+
+  if (targetPage === 'login' || targetPage === 'register') {
+    authInitialMode.value = targetPage as 'login' | 'register'
+    currentPage.value = targetPage
+  } else if (targetPage === 'forgot-password') {
     authInitialMode.value = 'forgot'
     currentPage.value = 'forgot-password'
-  } else if (page === 'reset-password') {
+  } else if (targetPage === 'reset-password') {
     authInitialMode.value = 'reset'
     currentPage.value = 'reset-password'
   } else {
-    currentPage.value = page as AppPage
+    currentPage.value = targetPage
   }
   // Update the browser URL
   const targetPath = PAGE_PATHS[currentPage.value] || '/'
@@ -338,6 +357,12 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
     @navigate="navigateTo"
   />
 
+  <!-- ═══════ Referral page ═══════ -->
+  <ReferralPage
+    v-else-if="currentPage === 'referrals'"
+    @navigate="navigateTo"
+  />
+
   <!-- ═══════ Admin Dashboard (admin only) ═══════ -->
   <AdminDashboard
     v-else-if="currentPage === 'admin' && auth.user?.is_admin"
@@ -395,6 +420,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
 
           <!-- Right: Actions -->
           <div class="flex items-center gap-1.5">
+            <button @click="navigateTo('referrals')" class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-400 rounded-lg shadow-sm transition-colors" title="Refer a friend">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12v10H4V12m16 0H4m16 0h-5m-6 0H4m5 0a3 3 0 116 0m-6 0a3 3 0 106 0m-3 0v10m0-10V7" /></svg>
+              <span class="hidden md:inline">Refer & Earn £10</span>
+            </button>
             <button @click="navigateTo('contact')" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800/50 rounded-lg transition-colors" title="Contact / Help">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
               Help
@@ -440,6 +469,10 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
                     <button @click="navigateTo('account'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                       Account Settings
+                    </button>
+                    <button @click="navigateTo('referrals'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12v10H4V12m16 0H4m16 0h-5m-6 0H4m5 0a3 3 0 116 0m-6 0a3 3 0 106 0m-3 0v10m0-10V7" /></svg>
+                      Referrals
                     </button>
                     <button @click="navigateTo('uploader'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>

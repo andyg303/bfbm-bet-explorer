@@ -12,6 +12,11 @@ interface AuthUser {
   subscription_expires?: string // ISO date
   commission_rate?: number      // global commission % (default 2.0)
   commission_rate_aus_nz?: number // AUS/NZ commission % (default 5.0)
+  referral_code?: string
+  referred_by_user_id?: number | null
+  referral_credit_balance?: number
+  referral_credits_awarded?: number
+  referral_credits_redeemed?: number
 }
 
 interface TokenPair {
@@ -90,7 +95,7 @@ export const useAuthStore = defineStore('auth', () => {
   // --------------- Actions ---------------
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-  async function register(email: string, password: string, displayName?: string) {
+  async function register(email: string, password: string, displayName?: string, referralCode?: string) {
     loading.value = true
     error.value = null
     try {
@@ -98,6 +103,7 @@ export const useAuthStore = defineStore('auth', () => {
         email,
         password,
         display_name: displayName,
+        referral_code: referralCode,
       })
       persistTokens(res.data)
     } catch (e) {

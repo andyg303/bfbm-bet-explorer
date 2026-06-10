@@ -485,6 +485,13 @@ export const getAllStrategies = async (): Promise<StrategyInfo[]> => {
   return response.data
 }
 
+// ─── Referral endpoints ─────────────────────────────────────────────────────
+
+export const getMyReferrals = async () => {
+  const response = await api.get('/referrals/me')
+  return response.data
+}
+
 // ─── Admin endpoints ─────────────────────────────────────────────────────────
 
 export const getAdminStats = async () => {
@@ -513,6 +520,11 @@ export const getAdminIngestionLogs = async (params: {
   return response.data
 }
 
+export const getAdminReferrals = async () => {
+  const response = await api.get('/admin/referrals')
+  return response.data
+}
+
 export const toggleUserActive = async (userId: number) => {
   const response = await api.post(`/admin/users/${userId}/toggle-active`)
   return response.data
@@ -520,5 +532,10 @@ export const toggleUserActive = async (userId: number) => {
 
 export const unlockUser = async (userId: number) => {
   const response = await api.post(`/admin/users/${userId}/unlock`)
+  return response.data
+}
+
+export const adjustReferralCredits = async (userId: number, credits: number) => {
+  const response = await api.post(`/admin/users/${userId}/referral-credits`, { credits })
   return response.data
 }

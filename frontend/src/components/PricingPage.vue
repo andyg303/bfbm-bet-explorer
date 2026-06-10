@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useAuthStore } from '../stores/authStore'
 import { useDarkMode } from '../composables/useDarkMode'
 import { api } from '../services/api'
@@ -14,12 +14,15 @@ const emit = defineEmits<{
 
 const loadingPlan = ref<string | null>(null)
 const error = ref('')
+const referralCredits = computed(() => auth.user?.referral_credit_balance || 0)
 
 const plans = [
   {
     key: '6month',
     name: '6 Months',
     price: '£40',
+    amount: 40,
+    months: 6,
     perMonth: '£6.67',
     period: '6 months',
     features: [
@@ -37,6 +40,8 @@ const plans = [
     key: '12month',
     name: '12 Months',
     price: '£60',
+    amount: 60,
+    months: 12,
     perMonth: '£5.00',
     period: '12 months',
     savings: 'Save £20',
@@ -54,6 +59,15 @@ const plans = [
     popular: true,
   },
 ]
+
+function checkoutPrice(plan: { amount: number; price: string }) {
+  return referralCredits.value > 0 ? `£${Math.max(plan.amount - 10, 0)}` : plan.price
+}
+
+function checkoutPerMonth(plan: { amount: number; months: number }) {
+  const amount = referralCredits.value > 0 ? Math.max(plan.amount - 10, 0) : plan.amount
+  return `£${(amount / plan.months).toFixed(2)}`
+}
 
 async function startCheckout(planKey: string) {
   error.value = ''
@@ -119,6 +133,9 @@ async function startCheckout(planKey: string) {
       <div v-if="!auth.isAuthenticated" class="mb-8 max-w-lg mx-auto p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm text-center">
         You'll need to <button @click="$emit('navigate', 'register')" class="font-semibold underline underline-offset-2 hover:text-amber-300">create a free account</button> before subscribing.
       </div>
+      <div v-else-if="referralCredits > 0" class="mb-8 max-w-lg mx-auto p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 dark:text-emerald-400 text-sm text-center">
+        Referral credit available: £10 off will be applied automatically at checkout.
+      </div>
 
       <!-- Pricing cards -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
@@ -136,11 +153,15 @@ async function startCheckout(planKey: string) {
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ plan.name }}</h3>
 
               <div class="mt-4 flex items-baseline gap-2">
-                <span class="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white font-mono">{{ plan.price }}</span>
+                <span class="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white font-mono">{{ checkoutPrice(plan) }}</span>
                 <div class="text-sm text-gray-500">
                   <div>one-time</div>
-                  <div class="font-medium text-teal-600 dark:text-teal-400">{{ plan.perMonth }}/mo</div>
+                  <div class="font-medium text-teal-600 dark:text-teal-400">{{ checkoutPerMonth(plan) }}/mo</div>
                 </div>
+              </div>
+              <div v-if="referralCredits > 0" class="mt-2 text-sm text-gray-500">
+                <span class="line-through">{{ plan.price }}</span>
+                <span class="ml-2 text-emerald-500 dark:text-emerald-400 font-semibold">£10 referral credit</span>
               </div>
 
               <div v-if="plan.savings" class="mt-3">
@@ -164,7 +185,7 @@ async function startCheckout(planKey: string) {
                   <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
                   Redirecting to checkout…
                 </span>
-                <span v-else>{{ auth.isAuthenticated ? `Subscribe — ${plan.price}` : 'Create Account to Subscribe' }}</span>
+                <span v-else>{{ auth.isAuthenticated ? `Subscribe — ${checkoutPrice(plan)}` : 'Create Account to Subscribe' }}</span>
               </button>
             </div>
           </div>

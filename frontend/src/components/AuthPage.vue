@@ -28,6 +28,7 @@ const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const displayName = ref('')
+const referralCode = ref('')
 const resetToken = ref('')
 const newPassword = ref('')
 const showPassword = ref(false)
@@ -42,8 +43,12 @@ onMounted(() => {
   // Also check URL params as fallback
   const params = new URLSearchParams(window.location.search)
   const urlToken = params.get('token')
+  const urlReferral = params.get('ref')
   if (urlToken && !resetToken.value) {
     resetToken.value = urlToken
+  }
+  if (urlReferral) {
+    referralCode.value = urlReferral.toUpperCase()
   }
 })
 
@@ -80,6 +85,7 @@ function clearForm() {
   password.value = ''
   confirmPassword.value = ''
   displayName.value = ''
+  referralCode.value = new URLSearchParams(window.location.search).get('ref')?.toUpperCase() || referralCode.value
   resetToken.value = ''
   newPassword.value = ''
   successMessage.value = ''
@@ -115,7 +121,7 @@ async function handleSubmit() {
         localError.value = 'Passwords do not match'
         return
       }
-      await auth.register(email.value, password.value, displayName.value || undefined)
+      await auth.register(email.value, password.value, displayName.value || undefined, referralCode.value || undefined)
     } else if (mode.value === 'forgot') {
       const msg = await auth.forgotPassword(email.value)
       successMessage.value = msg
@@ -179,6 +185,11 @@ async function handleSubmit() {
           <div v-if="mode === 'register'">
             <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">Display Name <span class="text-gray-400 dark:text-gray-600">(optional)</span></label>
             <input v-model="displayName" type="text" autocomplete="name" class="input-field" placeholder="Your name" />
+          </div>
+
+          <div v-if="mode === 'register'">
+            <label class="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">Referral Code <span class="text-gray-400 dark:text-gray-600">(optional)</span></label>
+            <input v-model.trim="referralCode" type="text" autocomplete="off" class="input-field font-mono uppercase" placeholder="ABC12345" />
           </div>
 
           <!-- Email -->

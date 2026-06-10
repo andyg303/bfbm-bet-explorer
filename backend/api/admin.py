@@ -7,7 +7,8 @@ in the database — there is no API to promote users.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, case, desc
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -19,6 +20,10 @@ from database import get_db, User, Bet, IngestionLog
 from api.auth import get_current_user
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+class ReferralCreditAdjustRequest(BaseModel):
+    credits: int
 
 
 # ─── Security dependency ─────────────────────────────────────────────────────
@@ -119,6 +124,11 @@ def admin_users(
             User.updated_at,
             User.failed_login_attempts,
             User.locked_until,
+            User.referral_code,
+            User.referred_by_user_id,
+            User.referral_credit_balance,
+            User.referral_credits_awarded,
+            User.referral_credits_redeemed,
             func.coalesce(bet_count_sub.c.bet_count, 0).label("bet_count"),
         )
         .outerjoin(bet_count_sub, User.id == bet_count_sub.c.user_id)
@@ -136,6 +146,7 @@ def admin_users(
         "email": User.email,
         "bet_count": bet_count_sub.c.bet_count,
         "subscription_status": User.subscription_status,
+        "referral_credit_balance": User.referral_credit_balance,
     }.get(sort, User.created_at)
 
     q = q.order_by(desc(sort_col) if order == "desc" else sort_col)
@@ -160,6 +171,11 @@ def admin_users(
             "bet_count": r.bet_count,
             "failed_login_attempts": r.failed_login_attempts or 0,
             "locked_until": r.locked_until.isoformat() if r.locked_until else None,
+            "referral_code": r.referral_code,
+            "referred_by_user_id": r.referred_by_user_id,
+            "referral_credit_balance": r.referral_credit_balance or 0,
+            "referral_credits_awarded": r.referral_credits_awarded or 0,
+            "referral_credits_redeemed": r.referral_credits_redeemed or 0,
         })
 
     return {"users": users, "total": total, "page": page, "per_page": per_page}
@@ -253,3 +269,140 @@ def unlock_user(
     target.locked_until = None
     db.commit()
     return {"id": target.id, "locked_until": None, "failed_login_attempts": 0}
+
+
+# ─── Referrals ───────────────────────────────────────────────────────────────
+@router.get("/referrals")
+def admin_referrals(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Referral attribution and credit overview."""
+    Referrer = aliased(User)
+    Referred = aliased(User)
+    referral_count = func.count(Referred.id).label("referral_count")
+    qualified_count = func.coalesce(
+        func.sum(case((Referred.referral_rewarded_at.isnot(None), 1), else_=0)),
+        0,
+    ).label("qualified_referral_count")
+
+    total_referral_signups = (
+        db.query(func.count(User.id))
+        .filter(User.referred_by_user_id.isnot(None))
+        .scalar() or 0
+    )
+    qualified_referrals = (
+        db.query(func.count(User.id))
+        .filter(User.referral_rewarded_at.isnot(None))
+        .scalar() or 0
+    )
+
+    top_rows = (
+        db.query(
+            Referrer.id,
+            Referrer.email,
+            Referrer.display_name,
+            Referrer.referral_code,
+            Referrer.referral_credit_balance,
+            Referrer.referral_credits_awarded,
+            Referrer.referral_credits_redeemed,
+            referral_count,
+            qualified_count,
+            func.max(Referred.created_at).label("latest_referral_at"),
+        )
+        .outerjoin(Referred, Referred.referred_by_user_id == Referrer.id)
+        .filter(
+            (Referred.id.isnot(None))
+            | (func.coalesce(Referrer.referral_credit_balance, 0) > 0)
+            | (func.coalesce(Referrer.referral_credits_awarded, 0) > 0)
+        )
+        .group_by(
+            Referrer.id,
+            Referrer.email,
+            Referrer.display_name,
+            Referrer.referral_code,
+            Referrer.referral_credit_balance,
+            Referrer.referral_credits_awarded,
+            Referrer.referral_credits_redeemed,
+        )
+        .order_by(desc(qualified_count), desc(referral_count))
+        .limit(50)
+        .all()
+    )
+
+    referral_rows = (
+        db.query(Referred, Referrer)
+        .join(Referrer, Referred.referred_by_user_id == Referrer.id)
+        .order_by(desc(Referred.created_at))
+        .limit(200)
+        .all()
+    )
+
+    return {
+        "stats": {
+            "total_referral_signups": total_referral_signups,
+            "qualified_referrals": qualified_referrals,
+            "pending_referrals": max(total_referral_signups - qualified_referrals, 0),
+            "total_credit_balance": db.query(func.coalesce(func.sum(User.referral_credit_balance), 0)).scalar() or 0,
+            "total_credits_awarded": db.query(func.coalesce(func.sum(User.referral_credits_awarded), 0)).scalar() or 0,
+            "total_credits_redeemed": db.query(func.coalesce(func.sum(User.referral_credits_redeemed), 0)).scalar() or 0,
+        },
+        "top_referrers": [
+            {
+                "id": r.id,
+                "email": r.email,
+                "display_name": r.display_name,
+                "referral_code": r.referral_code,
+                "referral_credit_balance": r.referral_credit_balance or 0,
+                "referral_credits_awarded": r.referral_credits_awarded or 0,
+                "referral_credits_redeemed": r.referral_credits_redeemed or 0,
+                "referral_count": r.referral_count or 0,
+                "qualified_referral_count": r.qualified_referral_count or 0,
+                "latest_referral_at": r.latest_referral_at.isoformat() if r.latest_referral_at else None,
+            }
+            for r in top_rows
+        ],
+        "referrals": [
+            {
+                "referred_user_id": referred.id,
+                "referred_email": referred.email,
+                "referred_display_name": referred.display_name,
+                "referred_created_at": referred.created_at.isoformat() if referred.created_at else None,
+                "referred_subscription_status": referred.subscription_status or "inactive",
+                "referral_rewarded_at": referred.referral_rewarded_at.isoformat() if referred.referral_rewarded_at else None,
+                "referrer_id": referrer.id,
+                "referrer_email": referrer.email,
+                "referrer_display_name": referrer.display_name,
+                "referrer_code": referrer.referral_code,
+            }
+            for referred, referrer in referral_rows
+        ],
+    }
+
+
+@router.post("/users/{target_user_id}/referral-credits")
+def adjust_referral_credits(
+    target_user_id: int,
+    req: ReferralCreditAdjustRequest,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Manually add or remove referral credits from a user."""
+    if req.credits == 0 or abs(req.credits) > 100:
+        raise HTTPException(status_code=400, detail="Credit adjustment must be between -100 and 100")
+    target = db.query(User).filter(User.id == target_user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    new_balance = (target.referral_credit_balance or 0) + req.credits
+    if new_balance < 0:
+        raise HTTPException(status_code=400, detail="Credit balance cannot go below zero")
+    target.referral_credit_balance = new_balance
+    if req.credits > 0:
+        target.referral_credits_awarded = (target.referral_credits_awarded or 0) + req.credits
+    db.commit()
+    return {
+        "id": target.id,
+        "referral_credit_balance": target.referral_credit_balance or 0,
+        "referral_credits_awarded": target.referral_credits_awarded or 0,
+        "referral_credits_redeemed": target.referral_credits_redeemed or 0,
+    }

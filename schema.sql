@@ -197,7 +197,15 @@ CREATE TABLE public.users (
     token_version integer DEFAULT 0 NOT NULL,
     failed_login_attempts integer DEFAULT 0 NOT NULL,
     locked_until timestamp without time zone,
-    password_reset_token_id character varying
+    password_reset_token_id character varying,
+    referral_code character varying,
+    referred_by_user_id integer,
+    referral_rewarded_at timestamp without time zone,
+    referral_credit_balance integer DEFAULT 0 NOT NULL,
+    referral_credits_awarded integer DEFAULT 0 NOT NULL,
+    referral_credits_redeemed integer DEFAULT 0 NOT NULL,
+    referral_pending_checkout_session_id character varying,
+    referral_last_redeemed_session_id character varying
 );
 
 
@@ -534,6 +542,20 @@ CREATE INDEX ix_users_password_reset_token_id ON public.users USING btree (passw
 
 
 --
+-- Name: ix_users_referral_code; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_users_referral_code ON public.users USING btree (referral_code);
+
+
+--
+-- Name: ix_users_referred_by_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_users_referred_by_user_id ON public.users USING btree (referred_by_user_id);
+
+
+--
 -- Name: ix_users_stripe_customer_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -562,6 +584,14 @@ ALTER TABLE ONLY public.ingestion_logs
 
 ALTER TABLE ONLY public.automation_tokens
     ADD CONSTRAINT automation_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: users users_referred_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_referred_by_user_id_fkey FOREIGN KEY (referred_by_user_id) REFERENCES public.users(id);
 
 
 --
