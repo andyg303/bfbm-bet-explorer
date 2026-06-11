@@ -20,6 +20,7 @@ import secrets
 import subprocess
 import sys
 import ssl
+import tempfile
 import threading
 import time
 import urllib.error
@@ -605,9 +606,139 @@ def command_run(args: argparse.Namespace) -> int:
 
 
 def task_command() -> str:
+    """Combined command string for the basic (logged-on-only) schtasks /TR fallback."""
     if getattr(sys, "frozen", False):
         return f'"{sys.executable}" run'
     return f'"{sys.executable}" "{Path(__file__).resolve()}" run'
+
+
+def task_exec_parts() -> tuple[str, str]:
+    """Return (command, arguments) split apart for the Task Scheduler XML <Exec>."""
+    if getattr(sys, "frozen", False):
+        return sys.executable, "run"
+    return sys.executable, f'"{Path(__file__).resolve()}" run'
+
+
+def build_task_xml(run_time: str, command: str, arguments: str) -> str:
+    """Build a Task Scheduler 1.2 XML definition.
+
+    Uses LogonType ``S4U`` so the task runs **whether the user is logged on or
+    not**, without storing the Windows password, and as the current user (so the
+    helper's ``%APPDATA%`` config file still resolves correctly). ``schtasks``
+    cannot create an S4U task from command-line flags — only via /XML.
+    """
+    hh, mm = run_time.split(":")
+    start = datetime.now().replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+    start_boundary = start.strftime("%Y-%m-%dT%H:%M:%S")
+    now_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    user = os.environ.get("USERNAME", "")
+    domain = os.environ.get("USERDOMAIN", "")
+    user_id = f"{domain}\\{user}" if domain and user else user
+
+    def esc(value: str) -> str:
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    return f"""<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Date>{now_str}</Date>
+    <Author>{esc(user_id)}</Author>
+    <Description>Daily upload of recent BFBM bets to BFBM Bet Explorer.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>{start_boundary}</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{esc(user_id)}</UserId>
+      <LogonType>S4U</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{esc(command)}</Command>
+      <Arguments>{esc(arguments)}</Arguments>
+    </Exec>
+  </Actions>
+</Task>"""
+
+
+def install_daily_task(run_time: str, task_name: str = DEFAULT_TASK_NAME) -> str:
+    """Create/replace the daily scheduled task.
+
+    Returns ``"logged-off"`` when the task runs whether the user is logged on or
+    not (preferred), or ``"logged-on"`` when only the basic logged-on-only task
+    could be created. Raises ``RuntimeError`` if nothing could be installed.
+    """
+    if os.name != "nt":
+        raise RuntimeError("Daily task installation is only available on Windows.")
+
+    command, arguments = task_exec_parts()
+
+    # Preferred: S4U task — runs whether logged on or not, no stored password.
+    s4u_error = ""
+    tmp_path = None
+    try:
+        xml = build_task_xml(run_time, command, arguments)
+        fd, tmp_path = tempfile.mkstemp(suffix=".xml")
+        os.close(fd)
+        Path(tmp_path).write_text(xml, encoding="utf-16")
+        result = subprocess.run(
+            ["schtasks", "/Create", "/TN", task_name, "/XML", tmp_path, "/F"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return "logged-off"
+        s4u_error = (result.stderr or result.stdout or "").strip()
+    except Exception as exc:  # noqa: BLE001 — fall back to the basic method
+        s4u_error = str(exc)
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    # Fallback: basic task that only runs while the user is logged on.
+    fallback_cmd = [
+        "schtasks", "/Create", "/TN", task_name,
+        "/SC", "DAILY", "/ST", run_time,
+        "/TR", task_command(), "/F",
+    ]
+    try:
+        subprocess.run(fallback_cmd, check=True, capture_output=True, text=True)
+        return "logged-on"
+    except subprocess.CalledProcessError as exc:
+        output = (exc.stderr or exc.stdout or "").strip()
+        raise RuntimeError(
+            f"Task Scheduler failed (exit {exc.returncode}){': ' + output if output else '.'}\n"
+            f"(Run-whether-logged-on-or-not mode also failed: {s4u_error})\n\n"
+            "Tip: try running the uploader as Administrator, or use the \"Run in Background\" "
+            "button and keep the app open."
+        ) from exc
 
 
 def command_install_task(args: argparse.Namespace) -> int:
@@ -622,28 +753,14 @@ def command_install_task(args: argparse.Namespace) -> int:
         return 2
 
     task_name = args.task_name or DEFAULT_TASK_NAME
-    cmd = [
-        "schtasks",
-        "/Create",
-        "/TN",
-        task_name,
-        "/SC",
-        "DAILY",
-        "/ST",
-        run_time,
-        "/TR",
-        task_command(),
-        "/F",
-    ]
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as exc:
-        output = (exc.stderr or exc.stdout or "").strip()
-        raise RuntimeError(
-            f"Task Scheduler failed (exit {exc.returncode}){': ' + output if output else '.'}\n\n"
-            "Tip: try running the uploader as Administrator (right-click → Run as administrator)."
-        ) from exc
-    print(f"Installed daily task '{task_name}' at {run_time}")
+    mode = install_daily_task(run_time, task_name)
+    if mode == "logged-off":
+        print(f"Installed daily task '{task_name}' at {run_time} (runs whether you are logged in or not).")
+    else:
+        print(
+            f"Installed daily task '{task_name}' at {run_time} — NOTE: this VPS only allows "
+            "tasks that run while you are logged in. Stay logged in, or keep the app open."
+        )
     return 0
 
 
@@ -679,6 +796,9 @@ class UploaderGui:
         self.run_time = tk.StringVar(value=self.config.get("time") or "02:15")
         self.lookback_hours = tk.StringVar(value=str(self.config.get("lookback_hours") or 48))
         self.busy = False
+        self._scheduler_thread: threading.Thread | None = None
+        self._scheduler_stop = threading.Event()
+        self.scheduler_btn_text = tk.StringVar(value="Run in Background")
 
         self._build()
 
@@ -740,7 +860,8 @@ class UploaderGui:
         actions.grid(row=5, column=0, sticky="ew", pady=(0, 12))
         self.ttk.Button(actions, text="Save Settings", command=self.save_settings_clicked).pack(side="left", padx=(0, 8))
         self.ttk.Button(actions, text="Run Upload Now", command=self.run_now).pack(side="left", padx=(0, 8))
-        self.ttk.Button(actions, text="Install Daily Task", command=self.install_task).pack(side="left")
+        self.ttk.Button(actions, text="Install Daily Task", command=self.install_task).pack(side="left", padx=(0, 8))
+        self.ttk.Button(actions, textvariable=self.scheduler_btn_text, command=self.toggle_scheduler).pack(side="left")
 
         log_frame = self.ttk.LabelFrame(main, text="Status", padding=8)
         log_frame.grid(row=6, column=0, sticky="nsew")
@@ -793,15 +914,16 @@ class UploaderGui:
         b("Step 1 — Enter your BFBM Bet Explorer email and password, then click Connect.")
         b("Step 2 — Click Auto to find your BFBM history file (or use File / Folder).")
         b("Step 3 — Set the daily upload time (e.g. 02:15 for 2:15 AM).")
-        b("Step 4 — Click Install Daily Task. Once installed you can close this app.")
+        b("Step 4 — Click Install Daily Task. Once installed you can usually close this app.")
         p("")
 
-        imp("✔  After clicking 'Install Daily Task' you can close this app.")
-        p("The task is registered with Windows Task Scheduler, which is a system service "
-          "that runs independently of this application. Uploads will happen automatically "
-          "every day at the configured time — even when the app is closed, the machine is "
-          "locked, or no user is actively logged in.\n"
-          "Only open the app again if you need to change settings or run a manual upload.")
+        imp("✔  After 'Install Daily Task' the upload runs automatically each day.")
+        p("The task is registered with Windows Task Scheduler and is set to run whether you "
+          "are logged in or not, so uploads happen automatically at the configured time — "
+          "even when the app is closed or the machine is locked.")
+        warn("On some locked-down VPS setups Windows only allows tasks that run WHILE you are "
+             "logged in. If uploads are not happening overnight, either stay logged in to the "
+             "VPS, or use the \"Run in Background\" button below and leave the app open.")
         p("")
 
         h1("Section guide")
@@ -839,6 +961,9 @@ class UploaderGui:
           "Use this to verify everything is working before relying on the daily task.")
         b("Install Daily Task — registers the task with Windows Task Scheduler. "
           "You can close the app straight after this.")
+        b("Run in Background — keeps the app open and uploads every day at the set time from "
+          "within the app itself. Use this if the scheduled task does not run on your VPS. "
+          "The app must stay open for this mode to work; click again to stop it.")
         p("")
 
         h1("Troubleshooting")
@@ -855,6 +980,15 @@ class UploaderGui:
         b("As a fallback, open Windows Task Scheduler (taskschd.msc) on the host machine "
           "and create the task manually with the action: "
           '\"BFBM Bet Explorer Uploader.exe\" run')
+        p("")
+
+        warn("The daily task was created but nothing uploaded overnight")
+        p("Some Windows/VPS configurations only run scheduled tasks while a user is logged in. "
+          "If you disconnect or log off your VPS session, a logged-on-only task will not fire. "
+          "This uploader installs the task to run whether you are logged in or not, but if your "
+          "system blocks that you have two options:")
+        b("Stay logged in to the VPS (disconnect the RDP window without logging off), or")
+        b("Click \"Run in Background\" and leave this app open — it uploads daily on its own.")
         p("")
 
         warn("SSL: CERTIFICATE_VERIFY_FAILED")
@@ -1008,35 +1142,98 @@ class UploaderGui:
                 raise RuntimeError("Daily task installation is only available on Windows.")
             if not config.get("time"):
                 raise RuntimeError("Enter a daily upload time first.")
-            cmd = [
-                "schtasks",
-                "/Create",
-                "/TN",
-                DEFAULT_TASK_NAME,
-                "/SC",
-                "DAILY",
-                "/ST",
-                config["time"],
-                "/TR",
-                task_command(),
-                "/F",
-            ]
-            try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
-            except subprocess.CalledProcessError as exc:
-                output = (exc.stderr or exc.stdout or "").strip()
-                raise RuntimeError(
-                    f"Task Scheduler failed (exit {exc.returncode}){': ' + output if output else '.'}\n\n"
-                    "Tip: try right-clicking the .exe and choosing \"Run as administrator\", "
-                    "then press \"Install Daily Task\" again."
-                ) from exc
-            self.log(f"Installed daily upload task for {config['time']}.")
-            self.log(
-                "Note: the app can now be closed — the task runs automatically "
-                "via Windows Task Scheduler even when the app is not open."
-            )
+            mode = install_daily_task(config["time"])
+            if mode == "logged-off":
+                self.log(f"Installed daily upload task for {config['time']}.")
+                self.log(
+                    "This task is set to run whether you are logged in or not — "
+                    "you can now close the app and it will still upload daily."
+                )
+            else:
+                self.log(f"Installed daily upload task for {config['time']} (basic mode).")
+                self.log(
+                    "WARNING: this machine only allows tasks that run while you are logged in. "
+                    "Either stay logged in to the VPS, or click \"Run in Background\" and "
+                    "keep this app open."
+                )
 
         self.run_background(work)
+
+    def _next_run_dt(self, run_time_str: str) -> datetime:
+        hh, mm = (int(x) for x in run_time_str.split(":"))
+        now = datetime.now()
+        candidate = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        return candidate
+
+    def toggle_scheduler(self) -> None:
+        if self._scheduler_thread and self._scheduler_thread.is_alive():
+            self._scheduler_stop.set()
+            self.scheduler_btn_text.set("Run in Background")
+            self.log("Background scheduler stopped.")
+            return
+
+        try:
+            config = self.save_settings()
+        except Exception as exc:
+            self.messagebox.showerror(APP_NAME, str(exc))
+            return
+        if not config.get("token"):
+            self.messagebox.showerror(APP_NAME, "Connect your account first.")
+            return
+        if not config.get("source"):
+            self.messagebox.showerror(APP_NAME, "Choose a CSV source first.")
+            return
+        if not config.get("time"):
+            self.messagebox.showerror(APP_NAME, "Enter a daily upload time first.")
+            return
+
+        self._scheduler_stop = threading.Event()
+        self._scheduler_thread = threading.Thread(
+            target=self._scheduler_loop, args=(dict(config),), daemon=True
+        )
+        self._scheduler_thread.start()
+        self.scheduler_btn_text.set("Stop Background Scheduler")
+        self.log(
+            "Background scheduler started — KEEP THIS APP OPEN. "
+            "It will upload every day at the set time while the app stays running."
+        )
+
+    def _scheduler_loop(self, config: dict) -> None:
+        run_time_str = config.get("time") or ""
+        while not self._scheduler_stop.is_set():
+            try:
+                target = self._next_run_dt(run_time_str)
+            except Exception as exc:
+                self.log(f"Background scheduler ERROR (bad time '{run_time_str}'): {exc}")
+                self.root.after(0, lambda: self.scheduler_btn_text.set("Run in Background"))
+                return
+            self.log(f"Next background upload scheduled for {target:%Y-%m-%d %H:%M}.")
+            while not self._scheduler_stop.is_set():
+                remaining = (target - datetime.now()).total_seconds()
+                if remaining <= 0:
+                    break
+                if self._scheduler_stop.wait(min(remaining, 30)):
+                    break
+            if self._scheduler_stop.is_set():
+                break
+            try:
+                self.log("Background scheduler: starting scheduled upload...")
+                run_upload(
+                    api_url=config.get("api_url") or DEFAULT_API_URL,
+                    token=str(config.get("token") or ""),
+                    source=config["source"],
+                    lookback_hours=int(config.get("lookback_hours") or 48),
+                    timeout=int(config.get("timeout") or DEFAULT_UPLOAD_TIMEOUT),
+                    settled_only=True,
+                    log=self.log,
+                )
+                self.log("Background scheduler: upload finished.")
+            except Exception as exc:
+                self.log(f"Background scheduler ERROR: {exc}")
+            # Move past the trigger minute before computing the next day's run.
+            self._scheduler_stop.wait(61)
 
     def run_background(self, func) -> None:
         if self.busy:

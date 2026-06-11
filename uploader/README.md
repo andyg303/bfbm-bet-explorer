@@ -16,6 +16,12 @@ After that, Windows Task Scheduler runs the same `.exe` every day with the
 That overlap is deliberate because the web app updates duplicate Bet IDs rather
 than inserting them twice.
 
+**Scheduling modes:** the installer creates a Task Scheduler job using the S4U
+logon type so it runs *whether or not the user is logged in* — the app can be
+closed after step 5. On locked-down VPS images that block S4U, the installer
+falls back to a logged-on-only task and warns the user; in that case they should
+use the in-app **Run in Background** button and leave the app open instead.
+
 ## Build The `.exe`
 
 Build on Windows. A Windows VPS is fine and is usually cleaner than an old
