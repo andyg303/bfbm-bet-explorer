@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useAuthStore } from '../stores/authStore'
 import { useBetStore } from '../stores/betStore'
 import LoadingOverlay from './LoadingOverlay.vue'
@@ -11,6 +11,8 @@ import {
   type AutomationToken,
   type UploadHistoryEntry,
 } from '../services/api'
+
+const props = defineProps<{ scrollTo?: string }>()
 
 const auth = useAuthStore()
 const betStore = useBetStore()
@@ -99,6 +101,11 @@ onMounted(async () => {
   }
   await loadAutomationTokens()
   await loadUploadHistory()
+  if (props.scrollTo) {
+    await nextTick()
+    const el = document.getElementById(props.scrollTo)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 })
 
 async function handleUpdateProfile() {
@@ -277,7 +284,7 @@ async function handleManageSubscription() {
       <div class="absolute bottom-[10%] right-[10%] w-[400px] h-[400px] rounded-full opacity-10 blur-[120px]" style="background: radial-gradient(circle, #0ea5e9, transparent 70%);"></div>
     </div>
 
-    <div class="max-w-2xl mx-auto space-y-6 animate-fade-in-up">
+    <div class="max-w-3xl mx-auto space-y-6 animate-fade-in-up">
       <!-- Header -->
       <div class="flex items-center justify-between">
         <div>
@@ -472,7 +479,7 @@ async function handleManageSubscription() {
       </div>
 
       <!-- ═══════ Automation Uploads ═══════ -->
-      <div class="glass-card overflow-hidden">
+      <div id="section-automation" class="glass-card overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800/40">
           <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <svg class="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -546,7 +553,7 @@ async function handleManageSubscription() {
       </div>
 
       <!-- ═══════ Upload History ═══════ -->
-      <div class="glass-card overflow-hidden">
+      <div id="section-upload-history" class="glass-card overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800/40">
           <button @click="showUploadHistory = !showUploadHistory" class="w-full flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
@@ -588,6 +595,7 @@ async function handleManageSubscription() {
                 {{ uploadHistory[0].created_at ? new Date(uploadHistory[0].created_at).toLocaleString('en-GB') : '—' }}
               </span>
               <span v-if="uploadHistory[0].status !== 'error'" class="text-gray-500">
+                {{ uploadHistory[0].rows_total.toLocaleString() }} total ·
                 +{{ uploadHistory[0].inserted.toLocaleString() }} new ·
                 {{ uploadHistory[0].updated.toLocaleString() }} updated ·
                 {{ uploadHistory[0].skipped.toLocaleString() }} skipped
@@ -608,6 +616,7 @@ async function handleManageSubscription() {
                     <th class="px-3 py-2 text-left font-medium">Date &amp; Time</th>
                     <th class="px-3 py-2 text-left font-medium">File</th>
                     <th class="px-3 py-2 text-center font-medium">Status</th>
+                    <th class="px-3 py-2 text-right font-medium">Total</th>
                     <th class="px-3 py-2 text-right font-medium">New</th>
                     <th class="px-3 py-2 text-right font-medium">Updated</th>
                     <th class="px-3 py-2 text-right font-medium">Skipped</th>
@@ -637,6 +646,7 @@ async function handleManageSubscription() {
                         {{ entry.status }}
                       </span>
                     </td>
+                    <td class="px-3 py-2 text-right font-mono text-gray-500">{{ entry.rows_total.toLocaleString() }}</td>
                     <td class="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{{ entry.inserted.toLocaleString() }}</td>
                     <td class="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{{ entry.updated.toLocaleString() }}</td>
                     <td class="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{{ entry.skipped.toLocaleString() }}</td>

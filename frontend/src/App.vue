@@ -113,8 +113,14 @@ function determineInitialPage(): AppPage {
   return urlPage
 }
 
+const accountScrollTarget = ref<string>('')
+
 function navigateTo(page: string, replace = false) {
-  let targetPage = page as AppPage
+  const hashIdx = page.indexOf('#')
+  const scrollTarget = hashIdx !== -1 ? page.slice(hashIdx + 1) : ''
+  const pageClean = hashIdx !== -1 ? page.slice(0, hashIdx) : page
+  if (scrollTarget) accountScrollTarget.value = scrollTarget
+  let targetPage = pageClean as AppPage
   if ((targetPage === 'dashboard' || targetPage === 'account' || targetPage === 'uploader') && (!auth.isAuthenticated || !auth.hasActiveSubscription)) {
     targetPage = auth.isAuthenticated ? 'pricing' : 'login'
   } else if (targetPage === 'referrals' && !auth.isAuthenticated) {
@@ -342,6 +348,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
   <!-- ═══════ Account Settings ═══════ -->
   <AccountSettings
     v-else-if="currentPage === 'account'"
+    :scroll-to="accountScrollTarget"
     @navigate="navigateTo"
   />
 

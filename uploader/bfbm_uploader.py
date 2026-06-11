@@ -243,7 +243,22 @@ def filter_recent_rows(
     rows: list[dict[str, str]],
     lookback_hours: int,
     settled_only: bool,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    """Return (filtered_rows, diagnostic_stats).
+
+    diagnostic_stats keys:
+      total_rows         - rows in the source file
+      status_header      - which column was used for status filtering (or None)
+      date_header        - which column was used for date filtering
+      cutoff             - the oldest date that passes the lookback window
+      settled_count      - rows with SETTLED status
+      non_settled_count  - rows skipped due to status
+      no_date_count      - rows skipped because date could not be parsed
+      too_old_count      - rows skipped because date is before cutoff
+      filtered_count     - rows that passed all filters
+      oldest_date        - oldest date in the filtered set (or None)
+      newest_date        - newest date in the filtered set (or None)
+    """
     status_header = find_header(headers, STATUS_HEADER_KEYS)
     date_header = find_header(headers, DATE_HEADER_KEYS)
     if not date_header:
@@ -251,20 +266,47 @@ def filter_recent_rows(
 
     cutoff = datetime.now() - timedelta(hours=lookback_hours)
     filtered: list[dict[str, str]] = []
+    non_settled = 0
+    no_date = 0
+    too_old = 0
+    settled_count = 0
+    dates: list[datetime] = []
+
     for row in rows:
         if settled_only:
             if not status_header:
+                non_settled += 1
                 continue
             status_value = str(row.get(status_header, "")).strip().upper()
             if status_value != "SETTLED":
+                non_settled += 1
                 continue
+        settled_count += 1
 
         row_dt = parse_datetime(row.get(date_header))
         if not row_dt:
+            no_date += 1
             continue
-        if row_dt >= cutoff:
-            filtered.append(row)
-    return filtered
+        if row_dt < cutoff:
+            too_old += 1
+            continue
+        filtered.append(row)
+        dates.append(row_dt)
+
+    stats: dict[str, Any] = {
+        "total_rows": len(rows),
+        "status_header": status_header,
+        "date_header": date_header,
+        "cutoff": cutoff,
+        "settled_count": settled_count,
+        "non_settled_count": non_settled,
+        "no_date_count": no_date,
+        "too_old_count": too_old,
+        "filtered_count": len(filtered),
+        "oldest_date": min(dates) if dates else None,
+        "newest_date": max(dates) if dates else None,
+    }
+    return filtered, stats
 
 
 def csv_bytes(headers: list[str], rows: list[dict[str, str]]) -> bytes:
@@ -510,7 +552,24 @@ def run_upload(
             log(f"{path.name}: empty CSV, skipped")
             continue
 
-        filtered = filter_recent_rows(headers, rows, lookback_hours, settled_only)
+        filtered, stats = filter_recent_rows(headers, rows, lookback_hours, settled_only)
+
+        # ── Diagnostic summary — always shown so issues are obvious ──────────
+        log(f"--- Diagnostic: {path.name} ---")
+        log(f"  Total rows in file : {stats['total_rows']}")
+        log(f"  Date column used   : {stats['date_header']}")
+        log(f"  Status column      : {stats['status_header'] or '(none found)'}")
+        log(f"  Lookback window    : last {lookback_hours}h  (cutoff: {stats['cutoff'].strftime('%Y-%m-%d %H:%M:%S')})")
+        log(f"  SETTLED rows       : {stats['settled_count']}  (non-settled/skipped: {stats['non_settled_count']})")
+        log(f"  Too old (before cutoff) : {stats['too_old_count']}")
+        log(f"  No parseable date  : {stats['no_date_count']}")
+        log(f"  Rows to upload     : {stats['filtered_count']}")
+        if stats['oldest_date']:
+            log(f"  Date range         : {stats['oldest_date'].strftime('%Y-%m-%d %H:%M')} → {stats['newest_date'].strftime('%Y-%m-%d %H:%M')}")
+        else:
+            log("  Date range         : (no rows passed filters)")
+        log("--- End diagnostic ---")
+
         if not filtered:
             log(f"{path.name}: no rows in the last {lookback_hours} hours")
             continue
@@ -855,6 +914,19 @@ class UploaderGui:
         self.ttk.Entry(schedule, textvariable=self.run_time, width=12).grid(row=0, column=1, sticky="w", pady=4)
         self.ttk.Label(schedule, text="Lookback hours").grid(row=0, column=2, sticky="w", pady=4)
         self.ttk.Entry(schedule, textvariable=self.lookback_hours, width=12).grid(row=0, column=3, sticky="w", pady=4)
+        bfbm_note = self.ttk.Label(
+            schedule,
+            text=(
+                "\u26a0  BFBM must be configured to save its history before this time.  "
+                "In BFBM: General Settings \u2192 Bets tab, enable 'Save bets history automatically "
+                "after midnight' and set this time to early morning (e.g. 02:15), OR enable "
+                "'Save bets history whenever bets are updated' and use any upload time."
+            ),
+            font=("Segoe UI", 8),
+            justify="left",
+            wraplength=460,
+        )
+        bfbm_note.grid(row=1, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
         actions = self.ttk.Frame(main)
         actions.grid(row=5, column=0, sticky="ew", pady=(0, 12))
@@ -949,10 +1021,24 @@ class UploaderGui:
 
         h2("3. Schedule")
         b("Daily time (HH:MM) — the time the automatic task runs each day (24-hour clock). "
-          "2:15 AM is recommended as BFBM is unlikely to be placing bets at that hour.")
+          "02:15 AM is recommended if using BFBM's 'save after midnight' option (see below).")
         b("Lookback hours — how far back in time to include settled bets (default 48 h). "
           "Increase this if you restart your VPS infrequently or want a longer safety net. "
           "528 h (22 days) is safe for very infrequent uploads.")
+        p("")
+
+        h2("BFBM Save Settings  \u26a0  (important)")
+        p("The uploader reads the uk_bets_history.gz file that BFBM writes to disk. "
+          "BFBM only saves this file at certain times — you must ensure it is saved "
+          "BEFORE the scheduled upload runs. In BFBM: General Settings \u2192 Bets tab:")
+        b("'Save bets history automatically after midnight' — BFBM saves the file once "
+          "per day just after midnight. Set your upload time to early morning (e.g. 02:15) "
+          "so the file is ready before the upload runs.")
+        b("'Save bets history whenever bets are updated' — BFBM saves the file every time "
+          "a bet is settled. With this option the history is always up-to-date so you can "
+          "set the upload time to whatever you like.")
+        warn("If neither option is ticked, BFBM only saves when you close the app — "
+             "the uploader will read stale data and show 0 new bets even when bets are settling.")
         p("")
 
         h2("Buttons")
