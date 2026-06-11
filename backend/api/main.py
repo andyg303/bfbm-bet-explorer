@@ -2264,6 +2264,44 @@ async def automation_ingest_status(
     }
 
 
+@app.get("/upload-history")
+async def get_upload_history(
+    limit: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Return the authenticated user's recent ingestion log entries."""
+    entries = (
+        db.query(IngestionLog)
+        .filter(IngestionLog.user_id == user.id)
+        .order_by(IngestionLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    def _fmt(entry: IngestionLog) -> dict:
+        warnings_list: list = []
+        if entry.warnings:
+            try:
+                warnings_list = json.loads(entry.warnings)
+            except (ValueError, TypeError):
+                warnings_list = []
+        return {
+            "id": entry.id,
+            "filename": entry.filename,
+            "status": entry.status,
+            "rows_total": entry.rows_total or 0,
+            "inserted": entry.rows_inserted or 0,
+            "updated": entry.rows_updated or 0,
+            "skipped": entry.rows_skipped or 0,
+            "warnings_count": len(warnings_list),
+            "error": entry.error_message,
+            "created_at": entry.created_at.isoformat() if entry.created_at else None,
+        }
+
+    return [_fmt(e) for e in entries]
+
+
 @app.post("/ingest")
 async def ingest_csv(
     file: UploadFile = File(...),

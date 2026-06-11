@@ -492,6 +492,26 @@ export const getMyReferrals = async () => {
   return response.data
 }
 
+// ─── Upload history ──────────────────────────────────────────────────────────
+
+export interface UploadHistoryEntry {
+  id: number
+  filename: string
+  status: 'success' | 'partial' | 'error' | 'processing'
+  rows_total: number
+  inserted: number
+  updated: number
+  skipped: number
+  warnings_count: number
+  error: string | null
+  created_at: string | null
+}
+
+export const getUploadHistory = async (limit = 20): Promise<UploadHistoryEntry[]> => {
+  const response = await api.get('/upload-history', { params: { limit } })
+  return response.data
+}
+
 // ─── Admin endpoints ─────────────────────────────────────────────────────────
 
 export const getAdminStats = async () => {

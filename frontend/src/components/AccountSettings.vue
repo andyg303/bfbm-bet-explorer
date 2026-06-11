@@ -7,7 +7,9 @@ import {
   createAutomationToken,
   listAutomationTokens,
   revokeAutomationToken,
+  getUploadHistory,
   type AutomationToken,
+  type UploadHistoryEntry,
 } from '../services/api'
 
 const auth = useAuthStore()
@@ -52,6 +54,12 @@ const automationCreating = ref(false)
 const automationError = ref('')
 const automationSuccess = ref('')
 
+// ─── Upload history ──────────────────────────────────────────────────────────
+const uploadHistory = ref<UploadHistoryEntry[]>([])
+const uploadHistoryLoading = ref(false)
+const uploadHistoryError = ref('')
+const showUploadHistory = ref(true)
+
 const passwordStrength = computed(() => {
   const p = newPassword.value
   if (p.length === 0) return { score: 0, label: '', color: '' }
@@ -90,6 +98,7 @@ onMounted(async () => {
     commissionRateAusNz.value = auth.user.commission_rate_aus_nz ?? 5.0
   }
   await loadAutomationTokens()
+  await loadUploadHistory()
 })
 
 async function handleUpdateProfile() {
@@ -182,6 +191,18 @@ async function loadAutomationTokens() {
     automationError.value = 'Failed to load upload tokens'
   } finally {
     automationLoading.value = false
+  }
+}
+
+async function loadUploadHistory() {
+  uploadHistoryLoading.value = true
+  uploadHistoryError.value = ''
+  try {
+    uploadHistory.value = await getUploadHistory(20)
+  } catch {
+    uploadHistoryError.value = 'Failed to load upload history'
+  } finally {
+    uploadHistoryLoading.value = false
   }
 }
 
@@ -519,6 +540,109 @@ async function handleManageSubscription() {
                   Revoke
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════ Upload History ═══════ -->
+      <div class="glass-card overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800/40">
+          <button @click="showUploadHistory = !showUploadHistory" class="w-full flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <svg class="w-5 h-5 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+              Upload History
+              <span v-if="uploadHistory.length" class="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-500">{{ uploadHistory.length }}</span>
+            </h2>
+            <div class="flex items-center gap-3">
+              <button @click.stop="loadUploadHistory" :disabled="uploadHistoryLoading" class="text-xs font-medium text-teal-400 hover:text-teal-300 disabled:opacity-40">Refresh</button>
+              <svg class="w-4 h-4 text-gray-400 transition-transform" :class="showUploadHistory ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            </div>
+          </button>
+        </div>
+
+        <div v-if="showUploadHistory" class="p-6">
+          <div v-if="uploadHistoryError" class="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-sm text-rose-400 mb-4">{{ uploadHistoryError }}</div>
+          <div v-if="uploadHistoryLoading" class="text-center py-6">
+            <svg class="animate-spin h-5 w-5 mx-auto text-teal-400" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+          </div>
+          <div v-else-if="uploadHistory.length === 0" class="text-sm text-gray-500 text-center py-4">No uploads recorded yet.</div>
+          <div v-else class="space-y-3">
+
+            <!-- Last upload summary banner -->
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 p-3 rounded-xl border text-sm"
+              :class="{
+                'bg-emerald-500/5 border-emerald-500/20': uploadHistory[0].status === 'success',
+                'bg-amber-500/5 border-amber-500/20': uploadHistory[0].status === 'partial',
+                'bg-rose-500/5 border-rose-500/20': uploadHistory[0].status === 'error',
+                'bg-sky-500/5 border-sky-500/20': uploadHistory[0].status === 'processing',
+              }"
+            >
+              <span class="font-semibold" :class="{
+                'text-emerald-400': uploadHistory[0].status === 'success',
+                'text-amber-400': uploadHistory[0].status === 'partial',
+                'text-rose-400': uploadHistory[0].status === 'error',
+                'text-sky-400': uploadHistory[0].status === 'processing',
+              }">Last upload:</span>
+              <span class="text-gray-700 dark:text-gray-300">
+                {{ uploadHistory[0].created_at ? new Date(uploadHistory[0].created_at).toLocaleString('en-GB') : '—' }}
+              </span>
+              <span v-if="uploadHistory[0].status !== 'error'" class="text-gray-500">
+                +{{ uploadHistory[0].inserted.toLocaleString() }} new ·
+                {{ uploadHistory[0].updated.toLocaleString() }} updated ·
+                {{ uploadHistory[0].skipped.toLocaleString() }} skipped
+              </span>
+              <span v-if="uploadHistory[0].status === 'error'" class="text-rose-400 truncate max-w-xs" :title="uploadHistory[0].error || ''">
+                {{ uploadHistory[0].error || 'Error' }}
+              </span>
+              <span v-if="uploadHistory[0].warnings_count" class="text-amber-400">
+                · {{ uploadHistory[0].warnings_count }} warning{{ uploadHistory[0].warnings_count !== 1 ? 's' : '' }}
+              </span>
+            </div>
+
+            <!-- Full log table -->
+            <div class="border border-gray-200 dark:border-gray-700/50 rounded-xl overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="bg-gray-50 dark:bg-gray-800/40 text-gray-500 uppercase tracking-wider">
+                    <th class="px-3 py-2 text-left font-medium">Date &amp; Time</th>
+                    <th class="px-3 py-2 text-left font-medium">File</th>
+                    <th class="px-3 py-2 text-center font-medium">Status</th>
+                    <th class="px-3 py-2 text-right font-medium">New</th>
+                    <th class="px-3 py-2 text-right font-medium">Updated</th>
+                    <th class="px-3 py-2 text-right font-medium">Skipped</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800/50">
+                  <tr v-for="entry in uploadHistory" :key="entry.id" class="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+                    <td class="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-400">
+                      {{ entry.created_at ? new Date(entry.created_at).toLocaleString('en-GB') : '—' }}
+                    </td>
+                    <td class="px-3 py-2 max-w-[160px] truncate text-gray-700 dark:text-gray-300" :title="entry.filename">{{ entry.filename }}</td>
+                    <td class="px-3 py-2 text-center">
+                      <span
+                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium"
+                        :class="{
+                          'bg-emerald-500/10 text-emerald-400': entry.status === 'success',
+                          'bg-amber-500/10 text-amber-400': entry.status === 'partial',
+                          'bg-rose-500/10 text-rose-400': entry.status === 'error',
+                          'bg-sky-500/10 text-sky-400': entry.status === 'processing',
+                        }"
+                        :title="entry.status === 'error' ? (entry.error || 'Error') : entry.status === 'partial' ? entry.warnings_count + ' warning(s)' : ''"
+                      >
+                        <svg v-if="entry.status === 'success'" class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                        <svg v-else-if="entry.status === 'error'" class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                        <svg v-else-if="entry.status === 'processing'" class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                        <svg v-else class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                        {{ entry.status }}
+                      </span>
+                    </td>
+                    <td class="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{{ entry.inserted.toLocaleString() }}</td>
+                    <td class="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{{ entry.updated.toLocaleString() }}</td>
+                    <td class="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{{ entry.skipped.toLocaleString() }}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
