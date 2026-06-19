@@ -36,6 +36,7 @@ APP_NAME = "BFBM Bet Explorer Uploader"
 DEFAULT_API_URL = "https://bfbmbetexplorer.com/api"
 DEFAULT_TASK_NAME = "BFBM Bet Explorer Upload"
 DEFAULT_UPLOAD_TIMEOUT = 900
+MIN_LOOKBACK_HOURS = 48
 
 if os.name == "nt":
     CONFIG_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
@@ -94,6 +95,16 @@ def validate_api_url(api_url: str) -> None:
     if parsed.scheme == "https" or (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}):
         return
     raise ValueError("API URL must be HTTPS. HTTP is allowed only for localhost development.")
+
+
+def validate_lookback_hours(value: Any) -> int:
+    try:
+        lookback_hours = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Lookback hours must be a number") from exc
+    if lookback_hours < MIN_LOOKBACK_HOURS:
+        raise ValueError(f"Lookback hours must be at least {MIN_LOOKBACK_HOURS}")
+    return lookback_hours
 
 
 def normalize_header(name: str) -> str:
@@ -545,6 +556,7 @@ def run_upload(
     settled_only: bool = True,
     log=print,
 ) -> int:
+    lookback_hours = validate_lookback_hours(lookback_hours)
     uploaded = 0
     for path in iter_sources(source):
         headers, rows = read_source_file(path)
@@ -618,8 +630,8 @@ def command_configure(args: argparse.Namespace) -> int:
         config["source"] = args.source
     if args.time:
         config["time"] = args.time
-    if args.lookback_hours:
-        config["lookback_hours"] = args.lookback_hours
+    if args.lookback_hours is not None:
+        config["lookback_hours"] = validate_lookback_hours(args.lookback_hours)
 
     validate_api_url(config.get("api_url") or DEFAULT_API_URL)
     missing = [key for key in ("api_url", "token", "source") if not config.get(key)]
@@ -637,7 +649,12 @@ def command_run(args: argparse.Namespace) -> int:
     api_url = args.api_url or config.get("api_url") or DEFAULT_API_URL
     token = args.token or config.get("token")
     source = args.source or config.get("source")
-    lookback_hours = int(args.lookback_hours or config.get("lookback_hours") or 48)
+    lookback_value = (
+        args.lookback_hours
+        if args.lookback_hours is not None
+        else config.get("lookback_hours") or MIN_LOOKBACK_HOURS
+    )
+    lookback_hours = validate_lookback_hours(lookback_value)
     timeout = int(args.timeout or config.get("timeout") or DEFAULT_UPLOAD_TIMEOUT)
     settled_only = not args.include_matched
 
@@ -853,7 +870,7 @@ class UploaderGui:
         default_history = find_default_bfbm_history()
         self.source = tk.StringVar(value=self.config.get("source") or (str(default_history) if default_history else ""))
         self.run_time = tk.StringVar(value=self.config.get("time") or "02:15")
-        self.lookback_hours = tk.StringVar(value=str(self.config.get("lookback_hours") or 48))
+        self.lookback_hours = tk.StringVar(value=str(self.config.get("lookback_hours") or MIN_LOOKBACK_HOURS))
         self.busy = False
         self._scheduler_thread: threading.Thread | None = None
         self._scheduler_stop = threading.Event()
@@ -912,7 +929,9 @@ class UploaderGui:
             schedule.columnconfigure(col, weight=1)
         self.ttk.Label(schedule, text="Daily time (HH:MM)").grid(row=0, column=0, sticky="w", pady=4)
         self.ttk.Entry(schedule, textvariable=self.run_time, width=12).grid(row=0, column=1, sticky="w", pady=4)
-        self.ttk.Label(schedule, text="Lookback hours").grid(row=0, column=2, sticky="w", pady=4)
+        self.ttk.Label(schedule, text=f"Lookback hours (min {MIN_LOOKBACK_HOURS})").grid(
+            row=0, column=2, sticky="w", pady=4
+        )
         self.ttk.Entry(schedule, textvariable=self.lookback_hours, width=12).grid(row=0, column=3, sticky="w", pady=4)
         bfbm_note = self.ttk.Label(
             schedule,
@@ -1022,7 +1041,7 @@ class UploaderGui:
         h2("3. Schedule")
         b("Daily time (HH:MM) — the time the automatic task runs each day (24-hour clock). "
           "02:15 AM is recommended if using BFBM's 'save after midnight' option (see below).")
-        b("Lookback hours — how far back in time to include settled bets (default 48 h). "
+        b("Lookback hours — how far back in time to include settled bets (minimum/default 48 h). "
           "Increase this if you restart your VPS infrequently or want a longer safety net. "
           "528 h (22 days) is safe for very infrequent uploads.")
         p("")
@@ -1131,12 +1150,7 @@ class UploaderGui:
         api_url = self.api_url.get().strip() or DEFAULT_API_URL
         source = self.source.get().strip()
         run_time = self.run_time.get().strip()
-        try:
-            lookback_hours = int(self.lookback_hours.get().strip())
-        except ValueError as exc:
-            raise ValueError("Lookback hours must be a number") from exc
-        if lookback_hours <= 0:
-            raise ValueError("Lookback hours must be greater than zero")
+        lookback_hours = validate_lookback_hours(self.lookback_hours.get().strip())
         if run_time and not re.match(r"^\d{2}:\d{2}$", run_time):
             raise ValueError("Daily time must use HH:MM format")
 
@@ -1207,7 +1221,9 @@ class UploaderGui:
                 api_url=config.get("api_url") or DEFAULT_API_URL,
                 token=token,
                 source=config["source"],
-                lookback_hours=int(config.get("lookback_hours") or 48),
+                lookback_hours=validate_lookback_hours(
+                    config.get("lookback_hours") or MIN_LOOKBACK_HOURS
+                ),
                 timeout=int(config.get("timeout") or DEFAULT_UPLOAD_TIMEOUT),
                 settled_only=True,
                 log=self.log,
@@ -1310,7 +1326,9 @@ class UploaderGui:
                     api_url=config.get("api_url") or DEFAULT_API_URL,
                     token=str(config.get("token") or ""),
                     source=config["source"],
-                    lookback_hours=int(config.get("lookback_hours") or 48),
+                    lookback_hours=validate_lookback_hours(
+                        config.get("lookback_hours") or MIN_LOOKBACK_HOURS
+                    ),
                     timeout=int(config.get("timeout") or DEFAULT_UPLOAD_TIMEOUT),
                     settled_only=True,
                     log=self.log,
@@ -1368,7 +1386,12 @@ def build_parser() -> argparse.ArgumentParser:
     configure.add_argument("--token", default=None, help="Automation token from Account Settings")
     configure.add_argument("--source", default=None, help="CSV file or folder containing CSV files")
     configure.add_argument("--time", default=None, help="Daily upload time for Task Scheduler, HH:MM")
-    configure.add_argument("--lookback-hours", type=int, default=None, help="Rows newer than this are uploaded")
+    configure.add_argument(
+        "--lookback-hours",
+        type=int,
+        default=None,
+        help=f"Rows newer than this are uploaded, minimum {MIN_LOOKBACK_HOURS}",
+    )
     configure.set_defaults(func=command_configure)
 
     run = subparsers.add_parser("run", help="Upload recent rows now")

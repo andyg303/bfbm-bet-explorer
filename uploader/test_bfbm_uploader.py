@@ -42,5 +42,33 @@ class BfbmUploaderTests(unittest.TestCase):
         self.assertTrue(any("Date range" in message for message in messages))
 
 
+class LookbackValidationTests(unittest.TestCase):
+    def test_lookback_hours_must_be_at_least_48(self) -> None:
+        with self.assertRaisesRegex(ValueError, "at least 48"):
+            bfbm_uploader.validate_lookback_hours(47)
+
+    def test_lookback_hours_accepts_48(self) -> None:
+        self.assertEqual(bfbm_uploader.validate_lookback_hours(48), 48)
+
+
+class BuildWindowsScriptTests(unittest.TestCase):
+    def test_pyinstaller_failure_stops_before_success_message(self) -> None:
+        script = (Path(__file__).resolve().parent / "build_windows.bat").read_text(
+            encoding="utf-8"
+        )
+        pyinstaller_command = (
+            "python -m PyInstaller --clean --noconfirm bfbm_uploader.spec"
+        )
+
+        self.assertIn(pyinstaller_command, script)
+        after_pyinstaller = script.split(pyinstaller_command, 1)[1]
+        error_check = after_pyinstaller.find("if errorlevel 1")
+        success_message = after_pyinstaller.find("echo Built:")
+
+        self.assertGreaterEqual(error_check, 0)
+        self.assertGreaterEqual(success_message, 0)
+        self.assertLess(error_check, success_message)
+
+
 if __name__ == "__main__":
     unittest.main()
