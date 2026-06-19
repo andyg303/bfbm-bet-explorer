@@ -11,6 +11,7 @@ const pageSizeOptions = [100, 250, 500]
 type SortableKey = 'start_time' | 'placed_date' | 'description' | 'selection' | 'bet_type' | 'matched_amount' | 'avg_price_matched' | 'bsp' | 'bsp_diff_absolute' | 'bsp_diff_percentage' | 'bsp_diff_probability' | 'lay_liability' | 'status' | 'profit_loss' | 'strategy' | 'event' | 'competition' | 'market_type'
 const sortKey = ref<SortableKey>('start_time')
 const sortDirection = ref<'asc' | 'desc'>('desc')
+const showBetsTable = ref(true)
 
 const isCustomStaking = computed(() => betStore.stakingParams.staking_type !== 'default')
 
@@ -230,7 +231,19 @@ async function handleDelete(bet: any) {
       </div>
     </div>
 
-    <div class="overflow-x-auto">
+    <div class="border-b border-gray-200 dark:border-gray-800/60 px-5 py-2.5">
+      <button
+        @click="showBetsTable = !showBetsTable"
+        class="inline-flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
+      >
+        <svg class="w-3.5 h-3.5 transition-transform" :class="{ 'rotate-180': showBetsTable }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+        {{ showBetsTable ? 'Hide Bets Table' : 'Show Bets Table' }}
+      </button>
+    </div>
+
+    <div v-if="showBetsTable" class="overflow-x-auto">
       <table class="data-table">
         <thead>
           <tr>
@@ -329,7 +342,7 @@ async function handleDelete(bet: any) {
       </table>
     </div>
 
-    <div class="px-5 py-3 border-t border-gray-200 dark:border-gray-800/60 text-center">
+    <div v-if="showBetsTable" class="px-5 py-3 border-t border-gray-200 dark:border-gray-800/60 text-center">
       <span class="text-xs text-gray-600 font-mono">Showing {{ bets.length }} of {{ totalBets.toLocaleString() }} bets</span>
     </div>
   </div>

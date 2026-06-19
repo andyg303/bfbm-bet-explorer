@@ -565,7 +565,7 @@ def run_upload(
         log(f"  No parseable date  : {stats['no_date_count']}")
         log(f"  Rows to upload     : {stats['filtered_count']}")
         if stats['oldest_date']:
-            log(f"  Date range         : {stats['oldest_date'].strftime('%Y-%m-%d %H:%M')} → {stats['newest_date'].strftime('%Y-%m-%d %H:%M')}")
+            log(f"  Date range         : {stats['oldest_date'].strftime('%Y-%m-%d %H:%M')} -> {stats['newest_date'].strftime('%Y-%m-%d %H:%M')}")
         else:
             log("  Date range         : (no rows passed filters)")
         log("--- End diagnostic ---")

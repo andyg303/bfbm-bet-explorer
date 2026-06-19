@@ -29,6 +29,7 @@ ChartJS.register(
 const betStore = useBetStore()
 const { isDark } = useDarkMode()
 
+const showPLGraph = ref(true)
 const plData = computed(() => betStore.plOverTime)
 
 const chartData = computed(() => {
@@ -114,16 +115,27 @@ const chartOptions = computed(() => ({
 
 <template>
   <div class="glass-card p-5">
-    <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2 mb-4">
-      <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>
-      Profit/Loss Over Time
-    </h2>
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+        <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>
+        Profit/Loss Over Time
+      </h2>
+      <button
+        @click="showPLGraph = !showPLGraph"
+        class="inline-flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
+      >
+        <svg class="w-3.5 h-3.5 transition-transform" :class="{ 'rotate-180': showPLGraph }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+        {{ showPLGraph ? 'Hide P/L Graph' : 'Show P/L Graph' }}
+      </button>
+    </div>
     
-    <div v-if="plData && plData.length > 0" class="h-96">
+    <div v-if="showPLGraph && plData && plData.length > 0" class="h-96">
       <Line :data="chartData" :options="chartOptions" />
     </div>
     
-    <div v-else class="h-96 flex items-center justify-center text-gray-600">
+    <div v-else-if="showPLGraph" class="h-96 flex items-center justify-center text-gray-600">
       No data available for chart
     </div>
   </div>

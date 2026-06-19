@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick, onBeforeUnmount } from 'vue'
 import { useBetStore } from '../stores/betStore'
 import { useDarkMode } from '../composables/useDarkMode'
 import { Chart, registerables } from 'chart.js'
@@ -12,6 +12,7 @@ const { isDark } = useDarkMode()
 
 const chartCanvas = ref<HTMLCanvasElement | null>(null)
 const roiCanvas = ref<HTMLCanvasElement | null>(null)
+const showOddsBandGraphs = ref(true)
 let chartInstance: Chart | null = null
 let roiChartInstance: Chart | null = null
 
@@ -242,37 +243,74 @@ function createAll() {
   createRoiChart()
 }
 
+function destroyAll() {
+  chartInstance?.destroy()
+  roiChartInstance?.destroy()
+  chartInstance = null
+  roiChartInstance = null
+}
+
+async function toggleOddsBandGraphs() {
+  showOddsBandGraphs.value = !showOddsBandGraphs.value
+  if (!showOddsBandGraphs.value) {
+    destroyAll()
+    return
+  }
+  await nextTick()
+  if (oddsBandsData.value.length > 0) createAll()
+}
+
 watch([oddsBandsData, isDark], async () => {
-  if (oddsBandsData.value.length > 0) {
+  if (showOddsBandGraphs.value && oddsBandsData.value.length > 0) {
     await nextTick()
     createAll()
   }
 }, { deep: true })
 
 onMounted(async () => {
-  if (oddsBandsData.value.length > 0) {
+  if (showOddsBandGraphs.value && oddsBandsData.value.length > 0) {
     await nextTick()
     createAll()
   }
 })
+
+onBeforeUnmount(() => {
+  destroyAll()
+})
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="glass-card p-5">
+  <div class="glass-card p-5">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+      <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+        <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3v18m4-14v14M7 13v8m12-11v11M3 17v4" /></svg>
+        Odds Band Graphs
+      </h2>
+      <button
+        @click="toggleOddsBandGraphs"
+        class="inline-flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
+      >
+        <svg class="w-3.5 h-3.5 transition-transform" :class="{ 'rotate-180': showOddsBandGraphs }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        </svg>
+        {{ showOddsBandGraphs ? 'Hide Odds Band Graphs' : 'Show Odds Band Graphs' }}
+      </button>
+    </div>
+
+    <div v-if="showOddsBandGraphs" class="space-y-6">
       <div v-if="oddsBandsData.length > 0" style="height: 400px;">
         <canvas ref="chartCanvas"></canvas>
       </div>
       <div v-else class="flex items-center justify-center h-64 text-gray-600">
         No data available
       </div>
-    </div>
-    <div class="glass-card p-5">
-      <div v-if="oddsBandsData.length > 0" style="height: 350px;">
-        <canvas ref="roiCanvas"></canvas>
-      </div>
-      <div v-else class="flex items-center justify-center h-64 text-gray-600">
-        No data available
+      <div class="border-t border-gray-200 dark:border-gray-800/60 pt-6">
+        <div v-if="oddsBandsData.length > 0" style="height: 350px;">
+          <canvas ref="roiCanvas"></canvas>
+        </div>
+        <div v-else class="flex items-center justify-center h-64 text-gray-600">
+          No data available
+        </div>
       </div>
     </div>
   </div>

@@ -219,6 +219,17 @@ export interface MonthlyPLResponse {
   key_stats: KeyStats
 }
 
+export interface StrategyComparisonItem {
+  strategy: string
+  stats: StrategyStats
+  pl_over_time: PLDataPoint[]
+  monthly_pl: MonthlyPLResponse
+}
+
+export interface StrategyComparisonResponse {
+  strategies: StrategyComparisonItem[]
+}
+
 // ─── API functions ───────────────────────────────────────────────────────────
 
 export const getFilterOptions = async () => {
@@ -263,6 +274,11 @@ export const getProfitCurveByOdds = async (filters: FilterParams): Promise<OddsC
 
 export const getMonthlyPL = async (filters: FilterParams): Promise<MonthlyPLResponse> => {
   const response = await api.post('/monthly-pl', filters)
+  return response.data
+}
+
+export const getStrategyComparison = async (filters: FilterParams): Promise<StrategyComparisonResponse> => {
+  const response = await api.post('/strategy-comparison', filters)
   return response.data
 }
 

@@ -41,6 +41,7 @@ from scripts.ingest_bets import ingest_csv_file, sanitize_strategy_name, read_cs
 from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability, deduplicate_bets
 from api.commission import apply_commission_for_user, calculate_restaked_commission_map
 from api.strategy_actions import delete_archived_strategy_bets
+from api.strategy_comparison import build_strategy_comparison
 from api.auth import (
     get_current_user,
     get_password_hash,
@@ -2013,6 +2014,22 @@ def get_monthly_pl(
             "max_peak_trough_drawdown": round(max_pt_dd, 2),
         },
     }
+
+
+@app.post("/strategy-comparison")
+def get_strategy_comparison(
+    filters: FilterParams,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Compare selected strategies using the current dashboard filters."""
+    if not filters.strategies or len(filters.strategies) < 2:
+        raise HTTPException(status_code=400, detail="Select at least two strategies to compare")
+
+    query = db.query(Bet).filter(Bet.strategy.isnot(None))
+    query = apply_filters(query, filters, user.id)
+    bets = query.all()
+    return build_strategy_comparison(bets, filters.strategies, filters, user)
 
 
 CSV_CONTENT_TYPES = {

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useBetStore } from '../stores/betStore'
 import type { StrategyStats } from '../services/api'
 import StrategyFilters from './StrategyFilters.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
 import LoadingOverlay from './LoadingOverlay.vue'
+import StrategyComparison from './StrategyComparison.vue'
 
 const betStore = useBetStore()
 
@@ -14,6 +15,9 @@ const selectedStrategies = ref<Set<string>>(new Set())
 const showArchiveDialog = ref(false)
 const archiving = ref(false)
 const showMetricsHelp = ref(false)
+const showComparison = ref(false)
+const showStrategyList = ref(true)
+const comparisonSection = ref<HTMLElement | null>(null)
 
 const strategyFilters = ref({
   nameSearch: '',
@@ -103,6 +107,10 @@ const stats = computed(() => {
   return sorted
 })
 
+const selectedComparisonStats = computed(() => {
+  return stats.value.filter(stat => selectedStrategies.value.has(stat.strategy))
+})
+
 function sort(key: keyof StrategyStats) {
   if (sortKey.value === key) {
     sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
@@ -130,6 +138,13 @@ function toggleAll() {
 
 function applySelection() {
   betStore.filters.strategies = Array.from(selectedStrategies.value)
+}
+
+async function showSelectedComparison() {
+  if (selectedStrategies.value.size < 2) return
+  showComparison.value = true
+  await nextTick()
+  comparisonSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 function clearSelection() {
@@ -174,83 +189,114 @@ async function archiveSelected() {
     archiving.value = false
   }
 }
+
+watch(selectedStrategies, () => {
+  if (selectedStrategies.value.size < 2) {
+    showComparison.value = false
+  }
+}, { deep: true })
 </script>
 
 <template>
-  <div class="glass-card">
-    <!-- Header -->
-    <div class="px-6 py-4 border-b border-gray-200 dark:border-white/5">
-      <div class="flex justify-between items-center mb-4">
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-lg bg-teal-500/10 flex items-center justify-center">
-            <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
+  <div class="space-y-6">
+    <div class="glass-card">
+      <!-- Header -->
+      <div class="px-6 py-4 border-b border-gray-200 dark:border-white/5">
+        <div class="flex justify-between items-center mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-teal-500/10 flex items-center justify-center">
+              <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Strategy Performance</h2>
           </div>
-          <h2 class="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Strategy Performance</h2>
+          <div class="flex flex-wrap justify-end gap-2">
+            <button
+              v-if="selectedStrategies.size > 0"
+              @click="showSelectedComparison"
+              :disabled="selectedStrategies.size < 2"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-sky-500 dark:text-sky-400 bg-sky-500/10 border border-sky-500/20 hover:bg-sky-500/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-all"
+              title="Compare selected strategies"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+              </svg>
+              Compare ({{ selectedStrategies.size }})
+            </button>
+            <button
+              @click="showArchiveDialog = true"
+              :disabled="selectedStrategies.size === 0"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-all"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+              Archive ({{ selectedStrategies.size }})
+            </button>
+            <button
+              @click="applySelection"
+              :disabled="selectedStrategies.size === 0"
+              class="px-3 py-1.5 text-xs font-medium text-teal-400 bg-teal-500/10 border border-teal-500/20 hover:bg-teal-500/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-all"
+            >
+              Apply ({{ selectedStrategies.size }})
+            </button>
+            <button
+              @click="clearSelection"
+              class="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg transition-all"
+            >
+              Clear
+            </button>
+          </div>
         </div>
-        <div class="flex gap-2">
-          <button 
-            @click="showArchiveDialog = true" 
-            :disabled="selectedStrategies.size === 0"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-all"
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-            </svg>
-            Archive ({{ selectedStrategies.size }})
-          </button>
-          <button 
-            @click="applySelection" 
-            :disabled="selectedStrategies.size === 0"
-            class="px-3 py-1.5 text-xs font-medium text-teal-400 bg-teal-500/10 border border-teal-500/20 hover:bg-teal-500/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-all"
-          >
-            Apply ({{ selectedStrategies.size }})
-          </button>
-          <button 
-            @click="clearSelection" 
-            class="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 rounded-lg transition-all"
-          >
-            Clear
-          </button>
-        </div>
+        <StrategyFilters v-model="strategyFilters" @clear="clearFilters" />
       </div>
-      <StrategyFilters v-model="strategyFilters" @clear="clearFilters" />
-    </div>
-    
-    <!-- ROI help row -->
-    <div class="border-t border-gray-200 dark:border-gray-800/60">
-      <button
-        @click="showMetricsHelp = !showMetricsHelp"
-        class="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400 hover:text-teal-500 dark:hover:text-teal-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left"
-      >
-        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-        <span class="font-medium">What is ROI % vs Reverse ROI %?</span>
-        <span class="ml-auto text-[10px] font-mono text-gray-400 dark:text-gray-600">{{ showMetricsHelp ? 'hide ▲' : 'show ▼' }}</span>
-      </button>
-      <transition name="help-slide">
-        <div v-if="showMetricsHelp" class="px-4 pb-4 pt-1 text-xs text-gray-600 dark:text-gray-400 space-y-2.5 border-t border-gray-100 dark:border-gray-800/40">
-          <p>Both measure profit relative to risk, but use a different denominator depending on bet side:</p>
-          <div class="ml-3 space-y-1.5">
-            <p><span class="font-medium text-teal-500">ROI %</span> = profit ÷ <em>what you actually risked</em>. BACK: stake. LAY: liability — <code>(odds − 1) × stake</code>.</p>
-            <p><span class="font-medium text-teal-500">Reverse ROI %</span> = profit ÷ <em>what the opposite side would have risked</em>. BACK: would-be lay liability. LAY: the stake.</p>
-          </div>
-          <p>They only diverge when odds are far from 2.0. At exactly 2.0 they are identical.</p>
-          <div class="p-2.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300">
-            <p class="font-medium mb-1">Example — lay-the-longshot (101.0 odds, +£90 profit from 1,000 bets)</p>
-            <ul class="ml-4 list-disc space-y-0.5">
-              <li><span class="font-medium">ROI %</span>: £90 ÷ £100,000 liability = <span class="font-mono">0.09%</span> — does not look very promising!</li>
-              <li><span class="font-medium">Reverse ROI %</span>: £90 ÷ £1,000 stakes = <span class="font-mono">9.0%</span> — reveals the real edge.</li>
-            </ul>
-          </div>
-          <p class="text-[10px] text-gray-500 italic">Rule of thumb: ROI % = bankroll efficiency. Reverse ROI % = edge per pound of other-side exposure.</p>
-        </div>
-      </transition>
-    </div>
 
-    <!-- Table -->
-    <div class="overflow-x-auto">
-      <table class="data-table">
+      <!-- Strategy list controls -->
+      <div class="border-t border-gray-200 dark:border-gray-800/60">
+        <div class="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            @click="showStrategyList = !showStrategyList"
+            class="inline-flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
+          >
+            <svg class="w-3.5 h-3.5 transition-transform" :class="{ 'rotate-180': showStrategyList }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+            {{ showStrategyList ? 'Hide Strategy List' : 'Show Strategy List' }}
+          </button>
+
+          <button
+            @click="showMetricsHelp = !showMetricsHelp"
+            class="inline-flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 hover:text-teal-500 dark:hover:text-teal-400 transition-colors sm:justify-end"
+          >
+            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <span class="font-medium">What is ROI % vs Reverse ROI %?</span>
+            <span class="text-[10px] font-mono text-gray-400 dark:text-gray-600">{{ showMetricsHelp ? 'hide ▲' : 'show ▼' }}</span>
+          </button>
+        </div>
+        <transition name="help-slide">
+          <div v-if="showMetricsHelp" class="px-4 pb-4 pt-1 text-xs text-gray-600 dark:text-gray-400 space-y-2.5 border-t border-gray-100 dark:border-gray-800/40">
+            <p>Both measure profit relative to risk, but use a different denominator depending on bet side:</p>
+            <div class="ml-3 space-y-1.5">
+              <p><span class="font-medium text-teal-500">ROI %</span> = profit ÷ <em>what you actually risked</em>. BACK: stake. LAY: liability — <code>(odds − 1) × stake</code>.</p>
+              <p><span class="font-medium text-teal-500">Reverse ROI %</span> = profit ÷ <em>what the opposite side would have risked</em>. BACK: would-be lay liability. LAY: the stake.</p>
+            </div>
+            <p>They only diverge when odds are far from 2.0. At exactly 2.0 they are identical.</p>
+            <div class="p-2.5 rounded bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300">
+              <p class="font-medium mb-1">Example — lay-the-longshot (101.0 odds, +£90 profit from 1,000 bets)</p>
+              <ul class="ml-4 list-disc space-y-0.5">
+                <li><span class="font-medium">ROI %</span>: £90 ÷ £100,000 liability = <span class="font-mono">0.09%</span> — does not look very promising!</li>
+                <li><span class="font-medium">Reverse ROI %</span>: £90 ÷ £1,000 stakes = <span class="font-mono">9.0%</span> — reveals the real edge.</li>
+              </ul>
+            </div>
+            <p class="text-[10px] text-gray-500 italic">Rule of thumb: ROI % = bankroll efficiency. Reverse ROI % = edge per pound of other-side exposure.</p>
+          </div>
+        </transition>
+      </div>
+
+      <!-- Table -->
+      <div v-if="showStrategyList" class="overflow-x-auto">
+        <table class="data-table">
         <thead>
           <tr>
             <th class="!px-4 !w-10">
@@ -341,6 +387,14 @@ async function archiveSelected() {
           </tr>
         </tbody>
       </table>
+    </div>
+    </div>
+
+    <div v-if="showComparison && selectedComparisonStats.length >= 2" ref="comparisonSection">
+      <StrategyComparison
+        :strategies="selectedComparisonStats"
+        @close="showComparison = false"
+      />
     </div>
 
     <!-- Archive Confirmation Dialog -->

@@ -61,6 +61,7 @@ const uploadHistory = ref<UploadHistoryEntry[]>([])
 const uploadHistoryLoading = ref(false)
 const uploadHistoryError = ref('')
 const showUploadHistory = ref(true)
+const latestUpload = computed(() => uploadHistory.value[0] ?? null)
 
 const passwordStrength = computed(() => {
   const p = newPassword.value
@@ -577,34 +578,34 @@ async function handleManageSubscription() {
           <div v-else class="space-y-3">
 
             <!-- Last upload summary banner -->
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 p-3 rounded-xl border text-sm"
+            <div v-if="latestUpload" class="flex flex-wrap items-center gap-x-4 gap-y-1 p-3 rounded-xl border text-sm"
               :class="{
-                'bg-emerald-500/5 border-emerald-500/20': uploadHistory[0].status === 'success',
-                'bg-amber-500/5 border-amber-500/20': uploadHistory[0].status === 'partial',
-                'bg-rose-500/5 border-rose-500/20': uploadHistory[0].status === 'error',
-                'bg-sky-500/5 border-sky-500/20': uploadHistory[0].status === 'processing',
+                'bg-emerald-500/5 border-emerald-500/20': latestUpload.status === 'success',
+                'bg-amber-500/5 border-amber-500/20': latestUpload.status === 'partial',
+                'bg-rose-500/5 border-rose-500/20': latestUpload.status === 'error',
+                'bg-sky-500/5 border-sky-500/20': latestUpload.status === 'processing',
               }"
             >
               <span class="font-semibold" :class="{
-                'text-emerald-400': uploadHistory[0].status === 'success',
-                'text-amber-400': uploadHistory[0].status === 'partial',
-                'text-rose-400': uploadHistory[0].status === 'error',
-                'text-sky-400': uploadHistory[0].status === 'processing',
+                'text-emerald-400': latestUpload.status === 'success',
+                'text-amber-400': latestUpload.status === 'partial',
+                'text-rose-400': latestUpload.status === 'error',
+                'text-sky-400': latestUpload.status === 'processing',
               }">Last upload:</span>
               <span class="text-gray-700 dark:text-gray-300">
-                {{ uploadHistory[0].created_at ? new Date(uploadHistory[0].created_at).toLocaleString('en-GB') : '—' }}
+                {{ latestUpload.created_at ? new Date(latestUpload.created_at).toLocaleString('en-GB') : '—' }}
               </span>
-              <span v-if="uploadHistory[0].status !== 'error'" class="text-gray-500">
-                {{ uploadHistory[0].rows_total.toLocaleString() }} total ·
-                +{{ uploadHistory[0].inserted.toLocaleString() }} new ·
-                {{ uploadHistory[0].updated.toLocaleString() }} updated ·
-                {{ uploadHistory[0].skipped.toLocaleString() }} skipped
+              <span v-if="latestUpload.status !== 'error'" class="text-gray-500">
+                {{ latestUpload.rows_total.toLocaleString() }} total ·
+                +{{ latestUpload.inserted.toLocaleString() }} new ·
+                {{ latestUpload.updated.toLocaleString() }} updated ·
+                {{ latestUpload.skipped.toLocaleString() }} skipped
               </span>
-              <span v-if="uploadHistory[0].status === 'error'" class="text-rose-400 truncate max-w-xs" :title="uploadHistory[0].error || ''">
-                {{ uploadHistory[0].error || 'Error' }}
+              <span v-if="latestUpload.status === 'error'" class="text-rose-400 truncate max-w-xs" :title="latestUpload.error || ''">
+                {{ latestUpload.error || 'Error' }}
               </span>
-              <span v-if="uploadHistory[0].warnings_count" class="text-amber-400">
-                · {{ uploadHistory[0].warnings_count }} warning{{ uploadHistory[0].warnings_count !== 1 ? 's' : '' }}
+              <span v-if="latestUpload.warnings_count" class="text-amber-400">
+                · {{ latestUpload.warnings_count }} warning{{ latestUpload.warnings_count !== 1 ? 's' : '' }}
               </span>
             </div>
 
