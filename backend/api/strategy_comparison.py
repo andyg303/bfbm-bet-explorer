@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any
 
 from database import Bet, User
-from api.commission import calculate_restaked_commission_map
+from api.commission import calculate_restaked_commission_map, net_profit_loss_for_bet
 from api.staking_utils import calculate_stake_or_liability, deduplicate_bets
 
 
@@ -171,7 +171,7 @@ def build_strategy_comparison(
         else:
             if bet.profit_loss is None:
                 continue
-            pl = float(bet.profit_loss)
+            pl = float(net_profit_loss_for_bet(bet) or 0)
             stake = float(bet.matched_amount or 0)
             if bet.bet_type == "LAY":
                 actual_risk = float(

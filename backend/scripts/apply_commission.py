@@ -1,62 +1,34 @@
-"""Apply 2% commission to all winning bets in the database"""
-import sys
+"""Recalculate stored commission_paid for all users."""
+
 import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import SessionLocal, Bet
+from database import SessionLocal, User
+from api.commission import apply_commission_for_user
 
-def apply_commission(profit_loss):
-    """Apply 2% commission on winning bets"""
-    if profit_loss is None:
-        return None
-    
-    # Only apply commission on positive returns (winning bets)
-    if profit_loss > 0:
-        return profit_loss * 0.98  # Deduct 2% commission
-    
-    return profit_loss
 
 def main():
     db = SessionLocal()
-    
     try:
-        # Get all bets with positive profit/loss
-        winning_bets = db.query(Bet).filter(Bet.profit_loss > 0).all()
-        
-        print(f"Found {len(winning_bets)} winning bets to apply commission to")
-        
-        if len(winning_bets) == 0:
-            print("No winning bets found!")
-            return
-        
-        # Calculate total commission
-        total_commission = 0
-        updated = 0
-        
-        for bet in winning_bets:
-            original_pl = bet.profit_loss
-            new_pl = apply_commission(original_pl)
-            commission = original_pl - new_pl
-            total_commission += commission
-            
-            bet.profit_loss = new_pl
-            updated += 1
-            
-            if updated % 1000 == 0:
-                print(f"  Updated {updated} bets...")
-                db.commit()
-        
-        db.commit()
-        
-        print(f"\nCommission application complete!")
-        print(f"  Updated: {updated} bets")
-        print(f"  Total commission deducted: £{total_commission:.2f}")
-        
+        users = db.query(User).all()
+        total_processed = 0
+        for user in users:
+            processed = apply_commission_for_user(db, user)
+            total_processed += processed
+            print(f"User {user.id}: recalculated commission for {processed} bets")
+
+        print("\nCommission recalculation complete")
+        print(f"  Users: {len(users)}")
+        print(f"  Bets processed: {total_processed}")
     except Exception as e:
         print(f"Error: {e}")
         db.rollback()
+        raise
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     main()

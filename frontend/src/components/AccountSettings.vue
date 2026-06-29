@@ -179,7 +179,7 @@ async function handleRecalculateCommission() {
   try {
     await auth.updateCommissionSettings(commissionRate.value, commissionRateAusNz.value)
     const result = await auth.recalculateCommission()
-    // Reload bets so table reflects new P/L and commission_paid values
+    // Reload bets so table reflects gross P/L and commission_paid values
     await betStore.loadBets(0, 100, 'start_time', 'desc')
     commissionSuccess.value = `Commission recalculated for ${result.bets_processed.toLocaleString()} bets.`
     setTimeout(() => { commissionSuccess.value = '' }, 5000)

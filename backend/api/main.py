@@ -39,7 +39,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db, SessionLocal, Bet, User, IngestionLog, AutomationToken, init_db
 from scripts.ingest_bets import ingest_csv_file, sanitize_strategy_name, read_csv, normalize_columns
 from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability, deduplicate_bets
-from api.commission import apply_commission_for_user, calculate_restaked_commission_map
+from api.commission import (
+    apply_commission_for_user,
+    calculate_restaked_commission_map,
+    net_profit_loss_expr,
+    net_profit_loss_for_bet,
+)
 from api.strategy_actions import delete_archived_strategy_bets
 from api.strategy_comparison import build_strategy_comparison
 from api.auth import (
@@ -373,9 +378,9 @@ def apply_filters(query, filters: FilterParams, user_id: int):
     if filters.max_stake is not None:
         query = query.filter(Bet.matched_amount <= filters.max_stake)
     if filters.min_pl is not None:
-        query = query.filter(Bet.profit_loss >= filters.min_pl)
+        query = query.filter(net_profit_loss_expr() >= filters.min_pl)
     if filters.max_pl is not None:
-        query = query.filter(Bet.profit_loss <= filters.max_pl)
+        query = query.filter(net_profit_loss_expr() <= filters.max_pl)
     if filters.date_from:
         query = query.filter(Bet.start_time >= datetime.fromisoformat(filters.date_from))
     if filters.date_to:
@@ -929,14 +934,14 @@ def recalculate_commission(
     user: User = Depends(require_active_subscription),
     db: Session = Depends(get_db),
 ):
-    """Recalculate commission for all of this user's active bets.
+    """Recalculate commission for all of this user's non-deleted bets.
 
     Algorithm:
-    1. Restore original P/L by adding back any previously-stored commission_paid.
-    2. Group all active (non-deleted, non-archived) bets by (market_key, strategy).
-    3. For each group, sum net P/L; if positive apply the appropriate commission rate
+    1. Keep imported P/L as gross P/L in profit_loss.
+    2. Group all non-deleted bets by (market_key, strategy).
+    3. For each group, sum gross P/L; if positive apply the appropriate commission rate
        (AUS/NZ or global) to the net profit and attribute it to the first positively-
-       settled bet in the group, reducing that bet's profit_loss by the commission.
+       settled bet in the group via commission_paid.
     4. All other bets in a group carry commission_paid = 0.
     """
     require_write_session(user)
@@ -1035,10 +1040,10 @@ def get_archived_strategies(
     query = db.query(
         Bet.strategy,
         func.count(Bet.id).label('num_bets'),
-        func.sum(Bet.profit_loss).label('total_pl'),
+        func.sum(net_profit_loss_expr()).label('total_pl'),
         func.sum(case((Bet.bet_type == 'LAY', Bet.lay_liability), else_=Bet.matched_amount)).label('total_staked'),
         func.avg(Bet.avg_price_matched).label('avg_odds'),
-        func.sum(case((Bet.profit_loss > 0, 1), else_=0)).label('num_won'),
+        func.sum(case((net_profit_loss_expr() > 0, 1), else_=0)).label('num_won'),
         func.min(Bet.start_time).label('first_bet'),
         func.max(Bet.start_time).label('last_bet'),
     ).filter(
@@ -1208,7 +1213,7 @@ def get_all_strategies(
         db.query(
             Bet.strategy,
             func.count(Bet.id).label("num_bets"),
-            func.sum(Bet.profit_loss).label("total_pl"),
+            func.sum(net_profit_loss_expr()).label("total_pl"),
             func.min(Bet.start_time).label("first_bet"),
             func.max(Bet.start_time).label("last_bet"),
         )
@@ -1406,14 +1411,14 @@ def get_strategy_stats(
     query = db.query(
         Bet.strategy,
         func.count(Bet.id).label('num_bets'),
-        func.sum(Bet.profit_loss).label('total_pl'),
+        func.sum(net_profit_loss_expr()).label('total_pl'),
         func.sum(case((Bet.bet_type == 'LAY', Bet.lay_liability), else_=Bet.matched_amount)).label('total_staked'),
         func.sum(case(
             (Bet.bet_type == 'BACK', (Bet.avg_price_matched - 1) * Bet.matched_amount),
             else_=Bet.matched_amount,
         )).label('total_reverse_risk'),
         func.avg(Bet.avg_price_matched).label('avg_odds'),
-        func.sum(case((Bet.profit_loss > 0, 1), else_=0)).label('num_won'),
+        func.sum(case((net_profit_loss_expr() > 0, 1), else_=0)).label('num_won'),
         func.sum(case((Bet.bet_type == 'BACK', 1), else_=0)).label('num_back'),
         func.sum(case((Bet.bet_type == 'LAY', 1), else_=0)).label('num_lay'),
         func.sum(case((Bet.bsp.isnot(None), 1), else_=0)).label('num_with_bsp'),
@@ -1577,7 +1582,7 @@ def get_pl_over_time(
 
     query = db.query(
         func.date(Bet.start_time).label('date'),
-        func.sum(Bet.profit_loss).label('daily_pl'),
+        func.sum(net_profit_loss_expr()).label('daily_pl'),
     ).filter(Bet.start_time.isnot(None))
     query = apply_filters(query, filters, user.id)
     query = query.group_by(func.date(Bet.start_time)).order_by(func.date(Bet.start_time))
@@ -1587,8 +1592,9 @@ def get_pl_over_time(
     for row in results:
         daily_pl = float(row.daily_pl or 0)
         cumulative_pl += daily_pl
+        date_value = row.date.isoformat() if hasattr(row.date, "isoformat") else str(row.date)
         data.append({
-            "date": row.date.isoformat() if row.date else None,
+            "date": date_value if row.date else None,
             "daily_pl": round(daily_pl, 2),
             "cumulative_pl": round(cumulative_pl, 2),
         })
@@ -1641,7 +1647,7 @@ def get_summary_stats(
             "yield_pct": round(yield_pct, 2), "num_strategies": num_strategies,
         }
 
-    total_pl = query.with_entities(func.sum(Bet.profit_loss)).scalar()
+    total_pl = query.with_entities(func.sum(net_profit_loss_expr())).scalar()
     total_staked = query.with_entities(
         func.sum(case((Bet.bet_type == 'BACK', Bet.matched_amount), else_=Bet.lay_liability))
     ).scalar()
@@ -1649,7 +1655,7 @@ def get_summary_stats(
         (Bet.bet_type == 'BACK', (Bet.avg_price_matched - 1) * Bet.matched_amount),
         else_=Bet.matched_amount,
     ))).scalar()
-    num_wins = query.filter(Bet.profit_loss > 0).count()
+    num_wins = query.filter(net_profit_loss_expr() > 0).count()
     roi = (float(total_pl) / float(total_staked) * 100) if total_staked and total_pl else 0
     yield_pct = (float(total_pl) / float(total_reverse_risk) * 100) if total_reverse_risk and total_pl else 0
     win_rate = (num_wins / total_bets * 100) if total_bets > 0 else 0
@@ -1690,7 +1696,7 @@ def recalculate_staking(
             "bet_id": bet.bet_id,
             "original_stake": round(original_stake, 2),
             "new_stake": round(recalc["stake"], 2),
-            "original_pl": round(bet.profit_loss or 0, 2),
+            "original_pl": round(net_profit_loss_for_bet(bet) or 0, 2),
             "new_pl": round(recalc["pl"], 2),
             "new_commission_paid": round(recalc["commission_paid"], 2),
         })
@@ -1741,7 +1747,7 @@ def get_odds_bands_profit(
         q = db.query(
             band_expr.label("band"),
             func.count(Bet.id).label("num_bets"),
-            func.coalesce(func.sum(Bet.profit_loss), 0.0).label("total_pl"),
+            func.coalesce(func.sum(net_profit_loss_expr()), 0.0).label("total_pl"),
             func.coalesce(func.sum(stake_expr), 0.0).label("total_staked"),
         )
         q = apply_filters(q, filters, user.id)
@@ -1792,7 +1798,7 @@ def get_odds_bands_profit(
     else:
         for bet in bets:
             odds = bet.avg_price_matched or 0
-            pl = bet.profit_loss or 0
+            pl = net_profit_loss_for_bet(bet) or 0
             stake = bet.lay_liability if bet.bet_type == 'LAY' else (bet.matched_amount or 0)
             for band_name, band_data in bands.items():
                 if band_data["min"] <= odds <= band_data["max"]:
@@ -1845,7 +1851,7 @@ def get_profit_curve_by_odds(
             pl = recalc["pl"]
             stake = recalc["liability"]
         else:
-            pl = bet.profit_loss or 0
+            pl = net_profit_loss_for_bet(bet) or 0
             stake = bet.lay_liability if bet.bet_type == 'LAY' else (bet.matched_amount or 0)
 
         # EV: if BSP available, compute EV = stake * (odds/bsp - 1) for BACK, adjusted for LAY
@@ -1903,7 +1909,7 @@ def get_monthly_pl(
 
         q_month = db.query(
             month_expr.label("month"),
-            func.coalesce(func.sum(Bet.profit_loss), 0.0).label("pl"),
+            func.coalesce(func.sum(net_profit_loss_expr()), 0.0).label("pl"),
         )
         q_month = apply_filters(q_month, filters, user.id)
         q_month = q_month.filter(
@@ -1914,7 +1920,7 @@ def get_monthly_pl(
 
         q_day = db.query(
             day_expr.label("d"),
-            func.coalesce(func.sum(Bet.profit_loss), 0.0).label("pl"),
+            func.coalesce(func.sum(net_profit_loss_expr()), 0.0).label("pl"),
         )
         q_day = apply_filters(q_day, filters, user.id)
         q_day = q_day.filter(
@@ -1943,7 +1949,7 @@ def get_monthly_pl(
                     continue
                 pl = recalc["pl"]
             else:
-                pl = bet.profit_loss
+                pl = net_profit_loss_for_bet(bet)
             month_key = bet.start_time.strftime("%Y-%m")
             monthly[month_key] = monthly.get(month_key, 0) + pl
             day_key = str(bet.start_time.date())

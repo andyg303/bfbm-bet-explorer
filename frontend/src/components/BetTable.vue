@@ -116,7 +116,7 @@ async function generateCSVContent() {
   // Create CSV content
   const headers = [
     'Date', 'Time', 'Event', 'Selection', 'Sport', 'Strategy', 'Type', 'Stake', 'Odds', 'BSP',
-    'BSP Diff', 'BSP %', 'BSP Prob', 'Liability', 'P/L', 'Comm. Paid', 'Market', 'Competition', 'Placed'
+    'BSP Diff', 'BSP %', 'BSP Prob', 'Liability', 'Gross P/L', 'Comm. Paid', 'Market', 'Competition', 'Placed'
   ]
   
   if (isCustomStaking.value) {
@@ -265,7 +265,7 @@ async function handleDelete(bet: any) {
             <th @click="sort('bsp_diff_percentage')" class="cursor-pointer hover:text-teal-400 transition-colors">BSP % <span v-if="sortKey === 'bsp_diff_percentage'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('bsp_diff_probability')" class="cursor-pointer hover:text-teal-400 transition-colors">BSP Prob <span v-if="sortKey === 'bsp_diff_probability'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('lay_liability')" class="cursor-pointer hover:text-teal-400 transition-colors">Liability <span v-if="sortKey === 'lay_liability'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
-            <th @click="sort('profit_loss')" class="cursor-pointer hover:text-teal-400 transition-colors">P/L <span v-if="sortKey === 'profit_loss'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
+            <th @click="sort('profit_loss')" class="cursor-pointer hover:text-teal-400 transition-colors">{{ isCustomStaking ? 'P/L' : 'Gross P/L' }} <span v-if="sortKey === 'profit_loss'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th class="whitespace-nowrap text-amber-400/80">Comm. Paid</th>
             <th @click="sort('market_type')" class="cursor-pointer hover:text-teal-400 transition-colors">Market <span v-if="sortKey === 'market_type'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('competition')" class="cursor-pointer hover:text-teal-400 transition-colors" style="min-width:160px">Competition <span v-if="sortKey === 'competition'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
@@ -325,7 +325,7 @@ async function handleDelete(bet: any) {
               <div v-else :class="(bet.profit_loss || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">£{{ bet.profit_loss?.toFixed(2) }}</div>
             </td>
             <td class="whitespace-nowrap font-mono text-xs">
-              <span v-if="getDisplayedCommissionPaid(bet) > 0" class="text-amber-500 dark:text-amber-400" :title="isCustomStaking ? 'Recalculated commission deducted from recalculated P/L' : 'Commission deducted from P/L'">-£{{ getDisplayedCommissionPaid(bet).toFixed(2) }}</span>
+              <span v-if="getDisplayedCommissionPaid(bet) > 0" class="text-amber-500 dark:text-amber-400" :title="isCustomStaking ? 'Recalculated commission deducted from recalculated P/L' : 'Commission deducted from gross P/L in reporting totals'">-£{{ getDisplayedCommissionPaid(bet).toFixed(2) }}</span>
               <span v-else class="text-gray-500">-</span>
             </td>
             <td class="whitespace-nowrap text-gray-500">{{ bet.market_type }}</td>

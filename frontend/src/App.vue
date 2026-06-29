@@ -21,6 +21,7 @@ import PricingPage from './components/PricingPage.vue'
 import AccountSettings from './components/AccountSettings.vue'
 import AdminDashboard from './components/AdminDashboard.vue'
 import LoadingOverlay from './components/LoadingOverlay.vue'
+import SectionLoading from './components/SectionLoading.vue'
 import ContactPage from './components/ContactPage.vue'
 import UploaderPage from './components/UploaderPage.vue'
 import ReferralPage from './components/ReferralPage.vue'
@@ -260,6 +261,21 @@ const initialDashboardLoading = ref(false)
 const hasLoadedDashboardOnce = ref(false)
 const loadedDashboardUserId = ref<number | null>(null)
 
+function loadDashboardSectionsAfterFirstPaint() {
+  setTimeout(() => {
+    void Promise.all([
+      betStore.migrateDeletedToArchived(),
+      betStore.loadStrategyStats(),
+      betStore.loadBets(),
+      betStore.loadPLOverTime(),
+      betStore.loadMonthlyPL(),
+      betStore.loadOddsBandsData(),
+      betStore.loadArchivedStrategies(),
+      betStore.loadMergeSuggestions(),
+    ])
+  }, 0)
+}
+
 async function loadDashboardData() {
   if (loadedDashboardUserId.value !== (auth.user?.id ?? null)) {
     hasLoadedDashboardOnce.value = false
@@ -268,18 +284,15 @@ async function loadDashboardData() {
     initialDashboardLoading.value = true
   }
   try {
-    await betStore.migrateDeletedToArchived()
     await betStore.loadFilterOptions()
     await betStore.loadSummaryStats()
-    await betStore.refreshAll()
-    await betStore.loadArchivedStrategies()
-    // Load merge suggestions in the background for the badge count
-    betStore.loadMergeSuggestions()
   } finally {
     initialDashboardLoading.value = false
     hasLoadedDashboardOnce.value = true
     loadedDashboardUserId.value = auth.user?.id ?? null
   }
+
+  loadDashboardSectionsAfterFirstPaint()
 }
 
 onMounted(async () => {
@@ -563,7 +576,9 @@ watch(() => [currentPage.value, auth.user?.id] as const, async ([page, userId]) 
     <!-- ═══════════ Main Content ═══════════ -->
     <main>
       <div v-if="activeTab === 'dashboard'" class="px-4 py-6 sm:px-6">
-        <SummaryHeader />
+        <SectionLoading :loading="betStore.loadingSections.summary" label="Loading stats">
+          <SummaryHeader />
+        </SectionLoading>
         <div class="mt-6 flex flex-col lg:flex-row gap-6">
           <aside class="lg:flex-shrink-0 transition-all duration-300" :class="[
             sidebarOpen ? 'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm' : 'hidden lg:block',
@@ -571,19 +586,31 @@ watch(() => [currentPage.value, auth.user?.id] as const, async ([page, userId]) 
           ]">
             <div v-if="sidebarOpen" class="absolute inset-0 lg:hidden" @click="sidebarOpen = false" />
             <div class="relative h-full lg:h-auto overflow-y-auto bg-gray-50 dark:bg-[#0b0f1a] lg:bg-transparent max-w-sm lg:max-w-none" :class="sidebarOpen ? 'p-4' : ''">
-              <FilterPanel />
+              <SectionLoading :loading="betStore.loadingSections.filters" label="Loading filters">
+                <FilterPanel />
+              </SectionLoading>
               <div class="mt-6">
                 <StakingCalculator />
               </div>
             </div>
           </aside>
           <div class="min-w-0 flex-1 space-y-6">
-            <StrategyStats />
-            <Charts />
-            <MonthlyPLTable />
-            <OddsBandsChart />
+            <SectionLoading :loading="betStore.loadingSections.strategies" label="Loading strategies">
+              <StrategyStats />
+            </SectionLoading>
+            <SectionLoading :loading="betStore.loadingSections.plGraph" label="Loading P/L graph">
+              <Charts />
+            </SectionLoading>
+            <SectionLoading :loading="betStore.loadingSections.monthly" label="Loading monthly P/L">
+              <MonthlyPLTable />
+            </SectionLoading>
+            <SectionLoading :loading="betStore.loadingSections.oddsBands" label="Loading odds bands">
+              <OddsBandsChart />
+            </SectionLoading>
             <AdvancedOddsCharts />
-            <BetTable />
+            <SectionLoading :loading="betStore.loadingSections.bets" label="Loading bets">
+              <BetTable />
+            </SectionLoading>
           </div>
         </div>
       </div>
@@ -593,7 +620,9 @@ watch(() => [currentPage.value, auth.user?.id] as const, async ([page, userId]) 
       </div>
 
       <div v-else-if="activeTab === 'archive'" class="px-4 py-6 sm:px-6">
-        <ArchivedStrategies />
+        <SectionLoading :loading="betStore.loadingSections.archive" label="Loading archive">
+          <ArchivedStrategies />
+        </SectionLoading>
       </div>
     </main>
 

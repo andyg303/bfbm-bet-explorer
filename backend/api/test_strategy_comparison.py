@@ -11,9 +11,9 @@ from api.strategy_comparison import build_strategy_comparison
 
 class StrategyComparisonTest(unittest.TestCase):
     def setUp(self):
-        engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
-        self.db = sessionmaker(bind=engine)()
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.db = sessionmaker(bind=self.engine)()
         self.user = User(
             id=1,
             email="test@example.com",
@@ -93,6 +93,7 @@ class StrategyComparisonTest(unittest.TestCase):
 
     def tearDown(self):
         self.db.close()
+        self.engine.dispose()
 
     def test_strategy_comparison_returns_separate_stats_lines_and_months(self):
         filters = SimpleNamespace(

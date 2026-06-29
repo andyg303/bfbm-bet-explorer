@@ -9,9 +9,9 @@ from api.strategy_actions import delete_archived_strategy_bets
 
 class StrategyDeletionTest(unittest.TestCase):
     def setUp(self):
-        engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
-        self.db = sessionmaker(bind=engine)()
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.db = sessionmaker(bind=self.engine)()
         self.user = User(id=1, email="test@example.com", password_hash="hash", subscription_status="active")
         self.db.add_all([
             Bet(user_id=1, bet_id="archived-1", strategy="Archived", is_archived=True, is_deleted=False),
@@ -23,6 +23,7 @@ class StrategyDeletionTest(unittest.TestCase):
 
     def tearDown(self):
         self.db.close()
+        self.engine.dispose()
 
     def test_delete_archived_strategies_hard_deletes_only_user_archived_bets(self):
         deleted = delete_archived_strategy_bets(

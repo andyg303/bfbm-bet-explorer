@@ -24,9 +24,9 @@ from api.main import delete_bet
 
 class AdminImpersonationTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
-        self.db = sessionmaker(bind=engine)()
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.db = sessionmaker(bind=self.engine)()
         self.admin = User(
             id=1,
             email="admin@example.com",
@@ -67,6 +67,7 @@ class AdminImpersonationTest(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self):
         self.db.close()
+        self.engine.dispose()
 
     async def test_impersonation_token_authenticates_as_target_and_marks_session_read_only(self):
         response = impersonate_user(self.user.id, self.admin, self.db)

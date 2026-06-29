@@ -4,6 +4,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import Bet, User
@@ -48,8 +49,44 @@ def get_market_key(description: str | None) -> str:
     return parts[0].strip() if len(parts) > 1 else description.strip()
 
 
+def net_profit_loss_expr():
+    """SQL expression for P/L after commission."""
+    return Bet.profit_loss - func.coalesce(Bet.commission_paid, 0.0)
+
+
+def net_profit_loss_for_bet(bet: Bet) -> float | None:
+    """Return a bet's P/L after commission.
+
+    Bet.profit_loss is the gross P/L imported from BFBM. Commission is kept
+    separately so the bets table can show both figures.
+    """
+    if bet.profit_loss is None:
+        return None
+    return float(bet.profit_loss or 0) - float(bet.commission_paid or 0)
+
+
+def _looks_like_legacy_net_group(group_bets: list[Bet], rate: float) -> bool:
+    """Detect rows where profit_loss was previously stored after commission."""
+    if rate <= 0:
+        return False
+
+    stored_commission = sum(float(bet.commission_paid or 0) for bet in group_bets)
+    if stored_commission <= 0:
+        return False
+
+    current_pl = sum(float(bet.profit_loss or 0) for bet in group_bets if bet.profit_loss is not None)
+    restored_pl = current_pl + stored_commission
+
+    expected_from_current = round(current_pl * rate, 4) if current_pl > 0 else 0.0
+    expected_from_restored = round(restored_pl * rate, 4) if restored_pl > 0 else 0.0
+
+    current_delta = abs(stored_commission - expected_from_current)
+    restored_delta = abs(stored_commission - expected_from_restored)
+    return restored_delta + 0.0001 < current_delta
+
+
 def apply_commission_for_user(db: Session, user: User) -> int:
-    """Persist commission-adjusted P/L for a user's active bets.
+    """Persist per-bet commission for a user's non-deleted bets.
 
     This is used both by the settings-page "Recalculate all bets" action and
     automatically after CSV ingestion, so imports immediately reflect the user's
@@ -64,26 +101,27 @@ def apply_commission_for_user(db: Session, user: User) -> int:
         .all()
     )
 
-    for bet in all_bets:
-        if bet.commission_paid and bet.commission_paid != 0 and bet.profit_loss is not None:
-            bet.profit_loss = round(bet.profit_loss + bet.commission_paid, 6)
-        bet.commission_paid = 0.0
-
-    active_bets = [bet for bet in all_bets if not bet.is_archived]
-
     groups: dict[tuple, list[Bet]] = defaultdict(list)
-    for bet in active_bets:
+    for bet in all_bets:
         if bet.profit_loss is None:
             continue
         groups[(get_market_key(bet.description), bet.strategy or '')].append(bet)
 
     for group_bets in groups.values():
-        net_pl = sum(bet.profit_loss for bet in group_bets if bet.profit_loss is not None)
-        if net_pl <= 0:
+        rate = aus_nz_rate if any(is_aus_nz_bet(bet) for bet in group_bets) else global_rate
+        if _looks_like_legacy_net_group(group_bets, rate):
+            for bet in group_bets:
+                if bet.commission_paid and bet.profit_loss is not None:
+                    bet.profit_loss = round(bet.profit_loss + bet.commission_paid, 6)
+
+        for bet in group_bets:
+            bet.commission_paid = 0.0
+
+        gross_pl = sum(bet.profit_loss for bet in group_bets if bet.profit_loss is not None)
+        if gross_pl <= 0:
             continue
 
-        rate = aus_nz_rate if any(is_aus_nz_bet(bet) for bet in group_bets) else global_rate
-        total_commission = round(net_pl * rate, 6)
+        total_commission = round(gross_pl * rate, 6)
 
         positive_bets = sorted(
             [bet for bet in group_bets if bet.profit_loss and bet.profit_loss > 0],
@@ -94,19 +132,17 @@ def apply_commission_for_user(db: Session, user: User) -> int:
 
         target_bet = positive_bets[0]
         target_bet.commission_paid = round(total_commission, 4)
-        target_bet.profit_loss = round(target_bet.profit_loss - total_commission, 6)
 
     db.commit()
-    return len(active_bets)
+    return len(all_bets)
 
 
 def calculate_restaked_commission_map(bets: list[Bet], filters: Any, user: User) -> dict[int, dict]:
     """Calculate custom-staking P/L with commission applied per market+strategy group.
 
-    Stored Bet.profit_loss already includes any persisted commission deduction.
-    For modelling level-stake / level-win, this restores each bet's gross P/L
-    by adding back commission_paid, scales that gross P/L to the custom stake,
-    then applies commission once to the positive net market result for each strategy.
+    Bet.profit_loss is the gross P/L imported from BFBM. For modelling
+    level-stake / level-win, scale that gross P/L to the custom stake, then
+    apply commission once to the positive net market result for each strategy.
     """
     global_rate = (user.commission_rate if user.commission_rate is not None else 2.0) / 100.0
     aus_nz_rate = (user.commission_rate_aus_nz if user.commission_rate_aus_nz is not None else 5.0) / 100.0
@@ -118,7 +154,7 @@ def calculate_restaked_commission_map(bets: list[Bet], filters: Any, user: User)
         if bet.profit_loss is None or not bet.matched_amount or not bet.avg_price_matched:
             continue
 
-        gross_pl = (bet.profit_loss or 0) + (bet.commission_paid or 0)
+        gross_pl = bet.profit_loss or 0
         new_stake = calculate_new_stake(
             bet.bet_type,
             bet.matched_amount,
