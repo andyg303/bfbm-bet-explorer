@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { adjustReferralCredits, getAdminStats, getAdminUsers, getAdminIngestionLogs, getAdminReferrals, toggleUserActive, unlockUser } from '../services/api'
+import { adjustReferralCredits, getAdminStats, getAdminUsers, getAdminIngestionLogs, getAdminReferrals, impersonateUser, toggleUserActive, unlockUser } from '../services/api'
+import { useAuthStore } from '../stores/authStore'
 
 const emit = defineEmits<{ (e: 'navigate', page: string): void }>()
+const auth = useAuthStore()
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const activeTab = ref<'overview' | 'users' | 'logs' | 'referrals'>('overview')
@@ -20,6 +22,7 @@ const usersSearch = ref('')
 const usersSort = ref('created_at')
 const usersSortOrder = ref('desc')
 const usersPerPage = 25
+const impersonatingUserId = ref<number | null>(null)
 
 // Ingestion logs
 const logs = ref<any[]>([])
@@ -123,6 +126,20 @@ async function handleAdjustCredits(userId: number, credits: number) {
     await loadReferrals()
   } catch (e: any) {
     error.value = e.response?.data?.detail || 'Credit adjustment failed'
+  }
+}
+
+async function handleImpersonate(user: any) {
+  if (user.is_admin || !user.is_active) return
+  impersonatingUserId.value = user.id
+  try {
+    const result = await impersonateUser(user.id)
+    auth.startImpersonation(result)
+    emit('navigate', 'dashboard')
+  } catch (e: any) {
+    error.value = e.response?.data?.detail || 'Failed to start impersonation'
+  } finally {
+    impersonatingUserId.value = null
   }
 }
 
@@ -331,6 +348,13 @@ onMounted(async () => {
                   </td>
                   <td class="px-4 py-3">
                     <div class="flex items-center gap-1">
+                      <button v-if="!u.is_admin && u.is_active" @click="handleImpersonate(u)"
+                        :disabled="impersonatingUserId === u.id"
+                        title="View this dashboard as the user"
+                        class="p-1.5 rounded-lg text-sky-500 hover:text-sky-400 hover:bg-sky-500/10 disabled:opacity-40 disabled:cursor-wait transition-colors">
+                        <svg v-if="impersonatingUserId !== u.id" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                        <svg v-else class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+                      </button>
                       <button v-if="!u.is_admin" @click="handleToggleActive(u.id)"
                         :title="u.is_active ? 'Disable user' : 'Enable user'"
                         class="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors">

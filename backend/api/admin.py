@@ -17,9 +17,10 @@ import json
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db, User, Bet, IngestionLog
-from api.auth import get_current_user
+from api.auth import create_access_token, get_current_user, user_to_auth_dict
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+IMPERSONATION_TOKEN_MINUTES = int(os.getenv("ADMIN_IMPERSONATION_EXPIRE_MINUTES", "60"))
 
 
 class ReferralCreditAdjustRequest(BaseModel):
@@ -179,6 +180,42 @@ def admin_users(
         })
 
     return {"users": users, "total": total, "page": page, "per_page": per_page}
+
+
+@router.post("/users/{target_user_id}/impersonate")
+def impersonate_user(
+    target_user_id: int,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Create a short-lived read-only access token for viewing a user's dashboard."""
+    target = db.query(User).filter(User.id == target_user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.is_admin:
+        raise HTTPException(status_code=400, detail="Cannot impersonate an admin user")
+    if not target.is_active:
+        raise HTTPException(status_code=400, detail="Cannot impersonate an inactive user")
+
+    token_version = target.token_version if hasattr(target, "token_version") else 0
+    access_token = create_access_token(
+        {
+            "sub": str(target.id),
+            "tv": token_version or 0,
+            "impersonated_by": admin.id,
+            "read_only": True,
+        },
+        expires_delta=timedelta(minutes=IMPERSONATION_TOKEN_MINUTES),
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in_minutes": IMPERSONATION_TOKEN_MINUTES,
+        "read_only": True,
+        "user": user_to_auth_dict(target),
+        "impersonator": user_to_auth_dict(admin),
+    }
 
 
 # ─── Ingestion log / error log ────────────────────────────────────────────────

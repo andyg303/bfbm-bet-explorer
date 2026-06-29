@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useBetStore } from '../stores/betStore'
+import { useAuthStore } from '../stores/authStore'
 import type { StrategyStats } from '../services/api'
 import StrategyFilters from './StrategyFilters.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -8,6 +9,7 @@ import LoadingOverlay from './LoadingOverlay.vue'
 import StrategyComparison from './StrategyComparison.vue'
 
 const betStore = useBetStore()
+const auth = useAuthStore()
 
 const sortKey = ref<keyof StrategyStats>('total_pl')
 const sortDirection = ref<'asc' | 'desc'>('desc')
@@ -180,6 +182,7 @@ function clearFilters() {
 }
 
 async function archiveSelected() {
+  if (auth.isImpersonating) return
   showArchiveDialog.value = false
   archiving.value = true
   try {
@@ -225,6 +228,7 @@ watch(selectedStrategies, () => {
               Compare ({{ selectedStrategies.size }})
             </button>
             <button
+              v-if="!auth.isImpersonating"
               @click="showArchiveDialog = true"
               :disabled="selectedStrategies.size === 0"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-all"

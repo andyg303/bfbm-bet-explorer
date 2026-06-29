@@ -69,6 +69,10 @@ function determineInitialPage(): AppPage {
   // Respect the current URL path first
   const urlPage = pageFromPath(window.location.pathname)
 
+  if (auth.isImpersonating && urlPage !== 'dashboard') {
+    return 'dashboard'
+  }
+
   if (urlPage === 'login' || urlPage === 'register') {
     authInitialMode.value = urlPage
     return urlPage
@@ -121,7 +125,9 @@ function navigateTo(page: string, replace = false) {
   const pageClean = hashIdx !== -1 ? page.slice(0, hashIdx) : page
   if (scrollTarget) accountScrollTarget.value = scrollTarget
   let targetPage = pageClean as AppPage
-  if ((targetPage === 'dashboard' || targetPage === 'account' || targetPage === 'uploader') && (!auth.isAuthenticated || !auth.hasActiveSubscription)) {
+  if (auth.isImpersonating && targetPage !== 'dashboard' && targetPage !== 'contact') {
+    targetPage = 'dashboard'
+  } else if ((targetPage === 'dashboard' || targetPage === 'account' || targetPage === 'uploader') && (!auth.isAuthenticated || !auth.hasActiveSubscription)) {
     targetPage = auth.isAuthenticated ? 'pricing' : 'login'
   } else if (targetPage === 'referrals' && !auth.isAuthenticated) {
     targetPage = 'login'
@@ -217,6 +223,12 @@ function handleLogout() {
   navigateTo('landing', true)
 }
 
+function returnToAdmin() {
+  auth.stopImpersonation()
+  showUserMenu.value = false
+  navigateTo('admin', true)
+}
+
 async function handleChangePassword() {
   cpError.value = ''
   cpSuccess.value = ''
@@ -246,8 +258,12 @@ const archivedCount = computed(() => betStore.archivedStrategies.length)
 // while the various endpoints (which can take 5-10 seconds) return.
 const initialDashboardLoading = ref(false)
 const hasLoadedDashboardOnce = ref(false)
+const loadedDashboardUserId = ref<number | null>(null)
 
 async function loadDashboardData() {
+  if (loadedDashboardUserId.value !== (auth.user?.id ?? null)) {
+    hasLoadedDashboardOnce.value = false
+  }
   if (!hasLoadedDashboardOnce.value) {
     initialDashboardLoading.value = true
   }
@@ -262,6 +278,7 @@ async function loadDashboardData() {
   } finally {
     initialDashboardLoading.value = false
     hasLoadedDashboardOnce.value = true
+    loadedDashboardUserId.value = auth.user?.id ?? null
   }
 }
 
@@ -320,6 +337,12 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
     } else {
       navigateTo('pricing', true)
     }
+  }
+})
+
+watch(() => [currentPage.value, auth.user?.id] as const, async ([page, userId]) => {
+  if (page === 'dashboard' && userId && auth.hasActiveSubscription && loadedDashboardUserId.value !== userId) {
+    await loadDashboardData()
   }
 })
 </script>
@@ -427,7 +450,7 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
 
           <!-- Right: Actions -->
           <div class="flex items-center gap-1.5">
-            <button @click="navigateTo('referrals')" class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-400 rounded-lg shadow-sm transition-colors" title="Refer a friend">
+            <button v-if="!auth.isImpersonating" @click="navigateTo('referrals')" class="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white bg-emerald-500 hover:bg-emerald-400 rounded-lg shadow-sm transition-colors" title="Refer a friend">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12v10H4V12m16 0H4m16 0h-5m-6 0H4m5 0a3 3 0 116 0m-6 0a3 3 0 106 0m-3 0v10m0-10V7" /></svg>
               <span class="hidden md:inline">Refer & Earn £10</span>
             </button>
@@ -435,8 +458,8 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
               Help
             </button>
-            <IngestData />
-            <button @click="navigateTo('uploader')" class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800/50 rounded-lg transition-colors" title="Windows auto uploader">
+            <IngestData v-if="!auth.isImpersonating" />
+            <button v-if="!auth.isImpersonating" @click="navigateTo('uploader')" class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800/50 rounded-lg transition-colors" title="Windows auto uploader">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
               Auto Uploader
             </button>
@@ -473,21 +496,25 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
                       Admin Dashboard
                     </button>
-                    <button @click="navigateTo('account'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
+                    <button v-if="!auth.isImpersonating" @click="navigateTo('account'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                       Account Settings
                     </button>
-                    <button @click="navigateTo('referrals'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors">
+                    <button v-if="!auth.isImpersonating" @click="navigateTo('referrals'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12v10H4V12m16 0H4m16 0h-5m-6 0H4m5 0a3 3 0 116 0m-6 0a3 3 0 106 0m-3 0v10m0-10V7" /></svg>
                       Referrals
                     </button>
-                    <button @click="navigateTo('uploader'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
+                    <button v-if="!auth.isImpersonating" @click="navigateTo('uploader'); showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                       Windows Uploader
                     </button>
-                    <button @click="showChangePassword = true; showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
+                    <button v-if="!auth.isImpersonating" @click="showChangePassword = true; showUserMenu = false" class="w-full text-left px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                       Change Password
+                    </button>
+                    <button v-if="auth.isImpersonating" @click="returnToAdmin" class="w-full text-left px-4 py-2.5 text-sm text-sky-400 hover:text-sky-300 hover:bg-sky-500/10 flex items-center gap-2 transition-colors">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12" /></svg>
+                      Return to Admin
                     </button>
                     <button @click="handleLogout" class="w-full text-left px-4 py-2.5 text-sm text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 flex items-center gap-2 transition-colors">
                       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
@@ -516,6 +543,22 @@ watch(() => auth.isAuthenticated, async (loggedIn) => {
         </div>
       </div>
     </nav>
+
+    <div v-if="auth.isImpersonating" class="sticky top-14 z-40 border-b border-sky-500/20 bg-sky-500/10 backdrop-blur-xl">
+      <div class="px-4 py-2 sm:px-6">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0 text-sm text-sky-900 dark:text-sky-100">
+            <span class="font-semibold">Read-only view:</span>
+            <span class="ml-1">Viewing {{ auth.impersonationTarget?.email || auth.displayName }}</span>
+            <span v-if="auth.impersonator?.email" class="ml-1 text-sky-700 dark:text-sky-300">as {{ auth.impersonator.email }}</span>
+          </div>
+          <button @click="returnToAdmin" class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-500/20 dark:text-sky-200">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 17l-5-5m0 0l5-5m-5 5h12" /></svg>
+            Return to Admin
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- ═══════════ Main Content ═══════════ -->
     <main>

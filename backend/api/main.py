@@ -44,12 +44,14 @@ from api.strategy_actions import delete_archived_strategy_bets
 from api.strategy_comparison import build_strategy_comparison
 from api.auth import (
     get_current_user,
+    require_write_session,
     get_password_hash,
     verify_password,
     create_access_token,
     create_refresh_token,
     create_password_reset_token,
     sanitize_display_name,
+    user_to_auth_dict,
     RegisterRequest,
     LoginRequest,
     ChangePasswordRequest,
@@ -393,24 +395,7 @@ def apply_filters(query, filters: FilterParams, user_id: int):
 
 def _user_dict(user: User) -> dict:
     """Standard user dict returned in auth responses — includes subscription."""
-    return {
-        "id": user.id,
-        "email": user.email,
-        "display_name": user.display_name,
-        "is_admin": user.is_admin or False,
-        "subscription_status": user.subscription_status or "inactive",
-        "subscription_plan": user.subscription_plan,
-        "subscription_expires": (
-            user.subscription_expires.isoformat() if user.subscription_expires else None
-        ),
-        "commission_rate": user.commission_rate if user.commission_rate is not None else 2.0,
-        "commission_rate_aus_nz": user.commission_rate_aus_nz if user.commission_rate_aus_nz is not None else 5.0,
-        "referral_code": user.referral_code,
-        "referred_by_user_id": user.referred_by_user_id,
-        "referral_credit_balance": user.referral_credit_balance or 0,
-        "referral_credits_awarded": user.referral_credits_awarded or 0,
-        "referral_credits_redeemed": user.referral_credits_redeemed or 0,
-    }
+    return user_to_auth_dict(user)
 
 
 def ensure_active_subscription(user: User) -> User:
@@ -419,6 +404,8 @@ def ensure_active_subscription(user: User) -> User:
     Shared by normal JWT endpoints and automation-token endpoints.
     Admins (is_admin=True) bypass all subscription checks.
     """
+    if getattr(user, "_read_only_session", False):
+        return user
     if user.is_admin:
         return user
     if user.subscription_status != "active":
@@ -700,7 +687,8 @@ def refresh_token(req: RefreshRequest, db: Session = Depends(get_db)):
 @app.get("/auth/me")
 def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Return the authenticated user's profile."""
-    ensure_referral_code(user, db)
+    if not getattr(user, "_read_only_session", False):
+        ensure_referral_code(user, db)
     d = _user_dict(user)
     d["created_at"] = user.created_at.isoformat() if user.created_at else None
     return d
@@ -713,6 +701,7 @@ def change_password(
     db: Session = Depends(get_db),
 ):
     """Change the authenticated user's password."""
+    require_write_session(user)
     if not verify_password(req.current_password, user.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     user.password_hash = get_password_hash(req.new_password)
@@ -731,6 +720,7 @@ def update_profile(
     db: Session = Depends(get_db),
 ):
     """Update the authenticated user's profile (display name and/or email)."""
+    require_write_session(user)
     changed = False
 
     if req.display_name is not None:
@@ -851,6 +841,7 @@ def update_commission_settings(
     db: Session = Depends(get_db),
 ):
     """Update the user's commission rate settings."""
+    require_write_session(user)
     if not (0 <= req.commission_rate <= 100):
         raise HTTPException(status_code=400, detail="commission_rate must be between 0 and 100")
     if not (0 <= req.commission_rate_aus_nz <= 100):
@@ -887,6 +878,7 @@ def create_automation_token(
     db: Session = Depends(get_db),
 ):
     """Create a one-time visible token for a VPS/desktop uploader."""
+    require_write_session(user)
     name = (req.name or "BFBM uploader").strip()
     if not name:
         name = "BFBM uploader"
@@ -915,6 +907,7 @@ def revoke_automation_token(
     db: Session = Depends(get_db),
 ):
     """Revoke an automation token belonging to the current user."""
+    require_write_session(user)
     token_row = (
         db.query(AutomationToken)
         .filter(
@@ -946,6 +939,7 @@ def recalculate_commission(
        settled bet in the group, reducing that bet's profit_loss by the commission.
     4. All other bets in a group carry commission_paid = 0.
     """
+    require_write_session(user)
     bets_processed = apply_commission_for_user(db, user)
     return {"ok": True, "bets_processed": bets_processed}
 
@@ -956,6 +950,7 @@ def delete_bet(
     db: Session = Depends(get_db),
 ):
     """Permanently soft-delete a single bet. Must belong to the authenticated user."""
+    require_write_session(user)
     bet = db.query(Bet).filter(Bet.id == bet_id, Bet.user_id == user.id).first()
     if not bet:
         raise HTTPException(status_code=404, detail="Bet not found")
@@ -975,6 +970,7 @@ def archive_strategies(
     db: Session = Depends(get_db),
 ):
     """Archive strategies — scoped to the authenticated user."""
+    require_write_session(user)
     if not req.strategies:
         raise HTTPException(status_code=400, detail="No strategies provided")
     count = (
@@ -998,6 +994,7 @@ def restore_strategies(
     db: Session = Depends(get_db),
 ):
     """Restore archived strategies — scoped to the authenticated user."""
+    require_write_session(user)
     if not req.strategies:
         raise HTTPException(status_code=400, detail="No strategies provided")
     count = (
@@ -1021,6 +1018,7 @@ def delete_archived_strategies(
     db: Session = Depends(get_db),
 ):
     """Permanently delete archived strategies for this user."""
+    require_write_session(user)
     if not req.strategies:
         raise HTTPException(status_code=400, detail="No strategies provided")
     count = delete_archived_strategy_bets(db, user.id, req.strategies)
@@ -1079,6 +1077,7 @@ def sanitize_existing_strategies(
     db: Session = Depends(get_db),
 ):
     """Clean up funny characters in strategy names for this user."""
+    require_write_session(user)
     bets = db.query(Bet).filter(
         Bet.user_id == user.id,
         Bet.strategy.isnot(None),
@@ -1168,6 +1167,7 @@ def merge_strategies(
     authenticated user and are not deleted) will have their strategy
     renamed to target_strategy.
     """
+    require_write_session(user)
     if not req.source_strategies:
         raise HTTPException(status_code=400, detail="No source strategies provided")
     if not req.target_strategy or not req.target_strategy.strip():
@@ -1246,6 +1246,7 @@ def migrate_deleted_to_archived(
       2. A single GROUP BY query to find strategies where every bet is
          soft-deleted, followed by a single bulk UPDATE.
     """
+    require_write_session(user)
     # Fast path — bail out immediately if the user has no soft-deleted bets at all.
     has_deleted = (
         db.query(Bet.id)
@@ -2332,6 +2333,7 @@ async def ingest_csv(
       - {type: 'complete', filename, inserted, updated, skipped, warnings, total_bets_in_db}
       - {type: 'error', detail}
     """
+    require_write_session(user)
     tmp_path, total_rows = await save_validated_csv_upload(file)
     user_id = user.id
     filename = file.filename

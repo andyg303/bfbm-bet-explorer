@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useBetStore } from '../stores/betStore'
+import { useAuthStore } from '../stores/authStore'
 import type { Bet } from '../services/api'
 
 const betStore = useBetStore()
+const auth = useAuthStore()
 const currentPage = ref(0)
 const pageSize = ref(100)
 const pageSizeOptions = [100, 250, 500]
@@ -193,6 +195,7 @@ async function exportToCSV() {
 const deletingId = ref<number | null>(null)
 
 async function handleDelete(bet: any) {
+  if (auth.isImpersonating) return
   if (!confirm(`Delete this bet (${bet.selection} @ ${bet.avg_price_matched?.toFixed(2)})? It will be hidden from all views but kept in the database.`)) return
   deletingId.value = bet.id
   try {
@@ -267,7 +270,7 @@ async function handleDelete(bet: any) {
             <th @click="sort('market_type')" class="cursor-pointer hover:text-teal-400 transition-colors">Market <span v-if="sortKey === 'market_type'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('competition')" class="cursor-pointer hover:text-teal-400 transition-colors" style="min-width:160px">Competition <span v-if="sortKey === 'competition'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
             <th @click="sort('placed_date')" class="cursor-pointer hover:text-teal-400 transition-colors whitespace-nowrap">Placed <span v-if="sortKey === 'placed_date'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span></th>
-            <th class="text-center">Del</th>
+            <th v-if="!auth.isImpersonating" class="text-center">Del</th>
           </tr>
         </thead>
         <tbody>
@@ -328,7 +331,7 @@ async function handleDelete(bet: any) {
             <td class="whitespace-nowrap text-gray-500">{{ bet.market_type }}</td>
             <td class="text-gray-500 truncate" style="max-width:240px" :title="bet.competition || ''">{{ bet.competition }}</td>
             <td class="whitespace-nowrap text-gray-500 font-mono text-xs" :title="formatDateTime(bet.placed_date)">{{ formatDateTime(bet.placed_date) }}</td>
-            <td class="text-center">
+            <td v-if="!auth.isImpersonating" class="text-center">
               <button @click="handleDelete(bet)" :disabled="deletingId === bet.id" title="Soft-delete this bet" class="p-1 rounded text-gray-600 hover:text-rose-400 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                 <svg v-if="deletingId !== bet.id" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
@@ -336,7 +339,7 @@ async function handleDelete(bet: any) {
             </td>
           </tr>
           <tr v-if="!bets || bets.length === 0">
-            <td :colspan="isDedup ? 21 : 20" class="px-6 py-8 text-center text-sm text-gray-600">No bets found</td>
+            <td :colspan="isDedup ? (auth.isImpersonating ? 20 : 21) : (auth.isImpersonating ? 19 : 20)" class="px-6 py-8 text-center text-sm text-gray-600">No bets found</td>
           </tr>
         </tbody>
       </table>

@@ -25,9 +25,33 @@ interface TokenPair {
   user: AuthUser
 }
 
+interface SavedAdminSession {
+  access_token: string
+  refresh_token: string | null
+  user: AuthUser
+}
+
+interface ImpersonationState {
+  target: AuthUser
+  impersonator: AuthUser
+  started_at: string
+  expires_in_minutes?: number
+}
+
+export interface ImpersonationResponse {
+  access_token: string
+  token_type: string
+  expires_in_minutes: number
+  read_only: boolean
+  user: AuthUser
+  impersonator: AuthUser
+}
+
 const STORAGE_KEY_TOKEN = 'bfbm_access_token'
 const STORAGE_KEY_REFRESH = 'bfbm_refresh_token'
 const STORAGE_KEY_USER = 'bfbm_user'
+const STORAGE_KEY_ADMIN_SESSION = 'bfbm_admin_session'
+const STORAGE_KEY_IMPERSONATION = 'bfbm_impersonation'
 
 export const useAuthStore = defineStore('auth', () => {
   // --------------- State ---------------
@@ -43,14 +67,28 @@ export const useAuthStore = defineStore('auth', () => {
       }
     })(),
   )
+  const impersonation = ref<ImpersonationState | null>(
+    (() => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY_IMPERSONATION)
+        return raw ? JSON.parse(raw) : null
+      } catch {
+        return null
+      }
+    })(),
+  )
   const loading = ref(false)
   const error = ref<string | null>(null)
 
   // --------------- Computed ---------------
   const isAuthenticated = computed(() => !!accessToken.value && !!user.value)
   const displayName = computed(() => user.value?.display_name || user.value?.email || '')
+  const isImpersonating = computed(() => !!impersonation.value)
+  const impersonationTarget = computed(() => impersonation.value?.target || null)
+  const impersonator = computed(() => impersonation.value?.impersonator || null)
   const hasActiveSubscription = computed(() => {
     if (!user.value) return false
+    if (isImpersonating.value) return true
     if (user.value.is_admin) return true
     if (user.value.subscription_status !== 'active') return false
     if (user.value.subscription_expires) {
@@ -74,9 +112,64 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = null
     refreshToken.value = null
     user.value = null
+    impersonation.value = null
     localStorage.removeItem(STORAGE_KEY_TOKEN)
     localStorage.removeItem(STORAGE_KEY_REFRESH)
     localStorage.removeItem(STORAGE_KEY_USER)
+    localStorage.removeItem(STORAGE_KEY_ADMIN_SESSION)
+    localStorage.removeItem(STORAGE_KEY_IMPERSONATION)
+  }
+
+  function persistImpersonation(data: ImpersonationResponse) {
+    if (!isImpersonating.value && accessToken.value && user.value) {
+      const saved: SavedAdminSession = {
+        access_token: accessToken.value,
+        refresh_token: refreshToken.value,
+        user: user.value,
+      }
+      localStorage.setItem(STORAGE_KEY_ADMIN_SESSION, JSON.stringify(saved))
+    }
+
+    accessToken.value = data.access_token
+    refreshToken.value = null
+    user.value = data.user
+    impersonation.value = {
+      target: data.user,
+      impersonator: data.impersonator,
+      started_at: new Date().toISOString(),
+      expires_in_minutes: data.expires_in_minutes,
+    }
+
+    localStorage.setItem(STORAGE_KEY_TOKEN, data.access_token)
+    localStorage.removeItem(STORAGE_KEY_REFRESH)
+    localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(data.user))
+    localStorage.setItem(STORAGE_KEY_IMPERSONATION, JSON.stringify(impersonation.value))
+  }
+
+  function restoreAdminSession(): boolean {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_ADMIN_SESSION)
+      if (!raw) return false
+      const saved: SavedAdminSession = JSON.parse(raw)
+      accessToken.value = saved.access_token
+      refreshToken.value = saved.refresh_token
+      user.value = saved.user
+      impersonation.value = null
+
+      localStorage.setItem(STORAGE_KEY_TOKEN, saved.access_token)
+      if (saved.refresh_token) {
+        localStorage.setItem(STORAGE_KEY_REFRESH, saved.refresh_token)
+      } else {
+        localStorage.removeItem(STORAGE_KEY_REFRESH)
+      }
+      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(saved.user))
+      localStorage.removeItem(STORAGE_KEY_ADMIN_SESSION)
+      localStorage.removeItem(STORAGE_KEY_IMPERSONATION)
+      return true
+    } catch {
+      clearTokens()
+      return false
+    }
   }
 
   function extractError(e: unknown): string {
@@ -324,14 +417,28 @@ export const useAuthStore = defineStore('auth', () => {
     clearTokens()
   }
 
+  function startImpersonation(data: ImpersonationResponse) {
+    persistImpersonation(data)
+  }
+
+  function stopImpersonation() {
+    if (!restoreAdminSession()) {
+      clearTokens()
+    }
+  }
+
   return {
     accessToken,
     refreshToken,
     user,
+    impersonation,
     loading,
     error,
     isAuthenticated,
     displayName,
+    isImpersonating,
+    impersonationTarget,
+    impersonator,
     hasActiveSubscription,
     subscriptionStatus,
     register,
@@ -349,5 +456,7 @@ export const useAuthStore = defineStore('auth', () => {
     clearTokens,
     updateCommissionSettings,
     recalculateCommission,
+    startImpersonation,
+    stopImpersonation,
   }
 })

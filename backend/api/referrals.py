@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db, User
-from api.auth import get_current_user
+from api.auth import get_current_user, require_write_session
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3080")
 REFERRAL_CREDIT_GBP = 10
@@ -79,6 +79,7 @@ def my_referrals(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    require_write_session(user)
     code = ensure_referral_code(user, db)
     referred_by = None
     if user.referred_by_user_id:

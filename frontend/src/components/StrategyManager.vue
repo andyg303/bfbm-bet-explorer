@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useBetStore } from '../stores/betStore'
+import { useAuthStore } from '../stores/authStore'
 import ConfirmDialog from './ConfirmDialog.vue'
 
 const betStore = useBetStore()
+const auth = useAuthStore()
 
 // ─── Tab state ───────────────────────────────────────────────────────────────
 const activeSubTab = ref<'suggestions' | 'manual'>('suggestions')
@@ -50,6 +52,7 @@ function toggleSuggestion(strategyId: string) {
 }
 
 function startSuggestionMerge(strategyId: string) {
+  if (auth.isImpersonating) return
   const suggestion = betStore.mergeSuggestions.find(s => s.strategy_id === strategyId)
   if (!suggestion) return
   const target = suggestionTargets.value[strategyId]
@@ -60,6 +63,7 @@ function startSuggestionMerge(strategyId: string) {
 }
 
 async function confirmSuggestionMerge() {
+  if (auth.isImpersonating) return
   if (!pendingSuggestionMerge.value) return
   const { sources, target } = pendingSuggestionMerge.value
   try {
@@ -85,6 +89,7 @@ const filteredStrategies = computed(() => {
 })
 
 function toggleManualSelect(strategy: string) {
+  if (auth.isImpersonating) return
   const newSet = new Set(selectedForMerge.value)
   if (newSet.has(strategy)) {
     newSet.delete(strategy)
@@ -99,6 +104,7 @@ function toggleManualSelect(strategy: string) {
 }
 
 function selectAllVisible() {
+  if (auth.isImpersonating) return
   if (selectedForMerge.value.size === filteredStrategies.value.length) {
     selectedForMerge.value = new Set()
   } else {
@@ -115,11 +121,13 @@ const canMerge = computed(() => {
 })
 
 function startManualMerge() {
+  if (auth.isImpersonating) return
   if (!canMerge.value) return
   showManualConfirm.value = true
 }
 
 async function confirmManualMerge() {
+  if (auth.isImpersonating) return
   const target = manualTargetName.value.trim()
   const sources = Array.from(selectedForMerge.value).filter(s => s !== target)
   if (!sources.length) {
@@ -169,6 +177,10 @@ function formatPL(value: number) {
       </p>
     </div>
 
+    <div v-if="auth.isImpersonating" class="rounded-lg border border-sky-500/20 bg-sky-500/10 px-4 py-3 text-sm text-sky-800 dark:text-sky-200">
+      Read-only impersonation mode. Strategy suggestions are visible, but merging is disabled.
+    </div>
+
     <!-- Result toast -->
     <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 -translate-y-2">
       <div v-if="mergeResult" class="p-3 rounded-lg text-sm font-medium" :class="mergeResult.type === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'">
@@ -185,7 +197,7 @@ function formatPL(value: number) {
           <span v-if="betStore.mergeSuggestions.length > 0" class="ml-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold leading-none rounded-full bg-amber-500/20 text-amber-400">{{ betStore.mergeSuggestions.length }}</span>
         </span>
       </button>
-      <button @click="activeSubTab = 'manual'" :class="activeSubTab === 'manual' ? 'active' : ''">
+      <button v-if="!auth.isImpersonating" @click="activeSubTab = 'manual'" :class="activeSubTab === 'manual' ? 'active' : ''">
         <span class="flex items-center gap-1.5">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
           Manual Merge
@@ -244,6 +256,7 @@ function formatPL(value: number) {
                 <div class="space-y-2">
                   <label v-for="member in suggestion.strategies" :key="member.strategy" class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors cursor-pointer">
                     <input
+                      v-if="!auth.isImpersonating"
                       type="radio"
                       :name="'target-' + suggestion.strategy_id"
                       :value="member.strategy"
@@ -254,15 +267,16 @@ function formatPL(value: number) {
                       <p class="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{{ member.strategy }}</p>
                       <p class="text-xs text-gray-500">{{ member.num_bets }} bets · {{ formatDate(member.first_bet) }} – {{ formatDate(member.last_bet) }}</p>
                     </div>
-                    <span v-if="suggestionTargets[suggestion.strategy_id] === member.strategy" class="text-[10px] font-semibold text-teal-500 bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 rounded-full">TARGET</span>
+                    <span v-if="!auth.isImpersonating && suggestionTargets[suggestion.strategy_id] === member.strategy" class="text-[10px] font-semibold text-teal-500 bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 rounded-full">TARGET</span>
                   </label>
                 </div>
 
-                <p class="text-xs text-gray-400 italic">
+                <p v-if="!auth.isImpersonating" class="text-xs text-gray-400 italic">
                   Select the name you want to keep. All other strategies will be renamed to the selected target.
                 </p>
 
                 <button
+                  v-if="!auth.isImpersonating"
                   @click="startSuggestionMerge(suggestion.strategy_id)"
                   :disabled="!suggestionTargets[suggestion.strategy_id]"
                   class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-white bg-gradient-to-r from-teal-500 to-sky-500 hover:from-teal-600 hover:to-sky-600 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-all shadow-sm"
@@ -278,7 +292,7 @@ function formatPL(value: number) {
     </div>
 
     <!-- ═══════ Manual Merge Tab ═══════ -->
-    <div v-if="activeSubTab === 'manual'">
+    <div v-if="activeSubTab === 'manual' && !auth.isImpersonating">
       <div class="space-y-4">
         <p class="text-xs text-gray-500">
           Select two or more strategies to merge, then choose the target name. All selected strategies will be renamed to the target.

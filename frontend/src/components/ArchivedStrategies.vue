@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useBetStore } from '../stores/betStore'
+import { useAuthStore } from '../stores/authStore'
 import ConfirmDialog from './ConfirmDialog.vue'
 import LoadingOverlay from './LoadingOverlay.vue'
 
 const betStore = useBetStore()
+const auth = useAuthStore()
 const selectedStrategies = ref<Set<string>>(new Set())
 const showRestoreDialog = ref(false)
 const showDeleteDialog = ref(false)
@@ -39,6 +41,7 @@ function toggleAll() {
 }
 
 async function confirmRestore() {
+  if (auth.isImpersonating) return
   showRestoreDialog.value = false
   restoring.value = true
   try {
@@ -50,6 +53,7 @@ async function confirmRestore() {
 }
 
 async function confirmDelete() {
+  if (auth.isImpersonating) return
   showDeleteDialog.value = false
   deleting.value = true
   try {
@@ -80,7 +84,7 @@ function formatDate(dateStr: string | null) {
           Archived strategies are hidden from the main dashboard. Restore them at any time.
         </p>
       </div>
-      <div class="flex flex-wrap items-center gap-3">
+      <div v-if="!auth.isImpersonating" class="flex flex-wrap items-center gap-3">
         <button
           @click="showRestoreDialog = true"
           :disabled="selectedStrategies.size === 0"
@@ -123,7 +127,7 @@ function formatDate(dateStr: string | null) {
         <table class="data-table">
           <thead>
             <tr>
-              <th class="!px-4 !w-10">
+              <th v-if="!auth.isImpersonating" class="!px-4 !w-10">
                 <input
                   type="checkbox"
                   :checked="selectedStrategies.size === filteredStrategies.length && filteredStrategies.length > 0"
@@ -146,7 +150,7 @@ function formatDate(dateStr: string | null) {
               v-for="stat in filteredStrategies"
               :key="stat.strategy"
             >
-              <td class="!px-4">
+              <td v-if="!auth.isImpersonating" class="!px-4">
                 <input
                   type="checkbox"
                   :checked="selectedStrategies.has(stat.strategy)"
@@ -168,7 +172,7 @@ function formatDate(dateStr: string | null) {
               <td class="font-mono text-gray-500 text-xs">{{ formatDate(stat.last_bet) }}</td>
             </tr>
             <tr v-if="filteredStrategies.length === 0">
-              <td colspan="9" class="!py-12 text-center">
+              <td :colspan="auth.isImpersonating ? 8 : 9" class="!py-12 text-center">
                 <div class="flex flex-col items-center gap-2">
                   <svg class="w-12 h-12 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />

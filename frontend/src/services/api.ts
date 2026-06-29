@@ -58,6 +58,26 @@ api.interceptors.response.use(
 
       const refreshToken = localStorage.getItem('bfbm_refresh_token')
       if (!refreshToken) {
+        const savedAdminSession = localStorage.getItem('bfbm_admin_session')
+        if (savedAdminSession) {
+          try {
+            const saved = JSON.parse(savedAdminSession)
+            localStorage.setItem('bfbm_access_token', saved.access_token)
+            if (saved.refresh_token) {
+              localStorage.setItem('bfbm_refresh_token', saved.refresh_token)
+            } else {
+              localStorage.removeItem('bfbm_refresh_token')
+            }
+            localStorage.setItem('bfbm_user', JSON.stringify(saved.user))
+            localStorage.removeItem('bfbm_admin_session')
+            localStorage.removeItem('bfbm_impersonation')
+            window.location.href = '/admin'
+            return Promise.reject(error)
+          } catch {
+            localStorage.removeItem('bfbm_admin_session')
+            localStorage.removeItem('bfbm_impersonation')
+          }
+        }
         // No refresh token — force logout
         localStorage.removeItem('bfbm_access_token')
         localStorage.removeItem('bfbm_refresh_token')
@@ -558,6 +578,50 @@ export const getAdminIngestionLogs = async (params: {
 
 export const getAdminReferrals = async () => {
   const response = await api.get('/admin/referrals')
+  return response.data
+}
+
+export interface AdminImpersonationResponse {
+  access_token: string
+  token_type: string
+  expires_in_minutes: number
+  read_only: boolean
+  user: {
+    id: number
+    email: string
+    display_name: string
+    is_admin?: boolean
+    subscription_status?: string
+    subscription_plan?: string
+    subscription_expires?: string
+    commission_rate?: number
+    commission_rate_aus_nz?: number
+    referral_code?: string
+    referred_by_user_id?: number | null
+    referral_credit_balance?: number
+    referral_credits_awarded?: number
+    referral_credits_redeemed?: number
+  }
+  impersonator: {
+    id: number
+    email: string
+    display_name: string
+    is_admin?: boolean
+    subscription_status?: string
+    subscription_plan?: string
+    subscription_expires?: string
+    commission_rate?: number
+    commission_rate_aus_nz?: number
+    referral_code?: string
+    referred_by_user_id?: number | null
+    referral_credit_balance?: number
+    referral_credits_awarded?: number
+    referral_credits_redeemed?: number
+  }
+}
+
+export const impersonateUser = async (userId: number): Promise<AdminImpersonationResponse> => {
+  const response = await api.post(`/admin/users/${userId}/impersonate`)
   return response.data
 }
 

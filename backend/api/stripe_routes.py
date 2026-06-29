@@ -18,7 +18,7 @@ from pydantic import BaseModel
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import get_db, User
-from api.auth import get_current_user
+from api.auth import get_current_user, require_write_session
 from api.referrals import award_referrer_credit, mark_referral_credit_redeemed
 
 # ---------------------------------------------------------------------------
@@ -78,6 +78,7 @@ def create_checkout_session(
     db: Session = Depends(get_db),
 ):
     """Create a Stripe Checkout Session for the chosen plan."""
+    require_write_session(user)
     if req.plan not in PLAN_MAP:
         raise HTTPException(status_code=400, detail="Invalid plan. Choose '6month' or '12month'.")
 
@@ -151,6 +152,7 @@ def create_customer_portal_session(
     Lets users cancel, change plan, update payment method, and view invoices
     without you having to build any of that UI yourself.
     """
+    require_write_session(user)
     if not user.stripe_customer_id:
         raise HTTPException(
             status_code=400,
@@ -331,7 +333,8 @@ def subscription_status(
 
     # Auto-expire if past date
     if (
-        user.subscription_status == "active"
+        not getattr(user, "_read_only_session", False)
+        and user.subscription_status == "active"
         and user.subscription_expires
         and user.subscription_expires <= now
     ):
@@ -356,6 +359,7 @@ def verify_session(
     db: Session = Depends(get_db),
 ):
     """Verify payment was completed and activate if webhook hasn't fired yet."""
+    require_write_session(user)
     try:
         session = stripe.checkout.Session.retrieve(session_id)
     except stripe.error.InvalidRequestError:

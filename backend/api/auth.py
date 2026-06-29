@@ -116,6 +116,8 @@ async def get_current_user(
             raise credentials_exception
         user_id = int(sub)
         token_ver = payload.get("tv", 0)
+        read_only_session = bool(payload.get("read_only", False))
+        impersonated_by = payload.get("impersonated_by")
     except (JWTError, ValueError, TypeError):
         raise credentials_exception
 
@@ -129,7 +131,41 @@ async def get_current_user(
     # Reject tokens issued before a password change / forced logout
     if hasattr(user, 'token_version') and (user.token_version or 0) != token_ver:
         raise credentials_exception
+    user._read_only_session = read_only_session
+    user._impersonated_by = impersonated_by
     return user
+
+
+def require_write_session(user: User = Depends(get_current_user)) -> User:
+    """Reject writes from read-only admin impersonation sessions."""
+    if getattr(user, "_read_only_session", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This impersonation session is read-only",
+        )
+    return user
+
+
+def user_to_auth_dict(user: User) -> dict:
+    """Standard user dict returned to the frontend in auth-like responses."""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "display_name": user.display_name,
+        "is_admin": user.is_admin or False,
+        "subscription_status": user.subscription_status or "inactive",
+        "subscription_plan": user.subscription_plan,
+        "subscription_expires": (
+            user.subscription_expires.isoformat() if user.subscription_expires else None
+        ),
+        "commission_rate": user.commission_rate if user.commission_rate is not None else 2.0,
+        "commission_rate_aus_nz": user.commission_rate_aus_nz if user.commission_rate_aus_nz is not None else 5.0,
+        "referral_code": user.referral_code,
+        "referred_by_user_id": user.referred_by_user_id,
+        "referral_credit_balance": user.referral_credit_balance or 0,
+        "referral_credits_awarded": user.referral_credits_awarded or 0,
+        "referral_credits_redeemed": user.referral_credits_redeemed or 0,
+    }
 
 
 # ---------------------------------------------------------------------------
