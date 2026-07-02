@@ -10,6 +10,8 @@ const props = withDefaults(
     cancelLabel?: string
     variant?: 'danger' | 'warning' | 'info'
     icon?: 'archive' | 'trash' | 'restore' | 'warning'
+    loading?: boolean
+    loadingLabel?: string
   }>(),
   {
     title: 'Are you sure?',
@@ -18,6 +20,8 @@ const props = withDefaults(
     cancelLabel: 'Cancel',
     variant: 'warning',
     icon: 'warning',
+    loading: false,
+    loadingLabel: 'Working',
   }
 )
 
@@ -25,6 +29,16 @@ const emit = defineEmits<{
   confirm: []
   cancel: []
 }>()
+
+function handleCancel() {
+  if (props.loading) return
+  emit('cancel')
+}
+
+function handleConfirm() {
+  if (props.loading) return
+  emit('confirm')
+}
 
 const variantClasses = computed(() => {
   switch (props.variant) {
@@ -62,7 +76,7 @@ const variantClasses = computed(() => {
     >
       <div v-if="open" class="fixed inset-0 z-[100] overflow-y-auto">
         <!-- Backdrop -->
-        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="emit('cancel')" />
+        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="handleCancel" />
 
         <!-- Dialog -->
         <div class="flex min-h-full items-center justify-center p-4">
@@ -138,23 +152,39 @@ const variantClasses = computed(() => {
                   <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
                     {{ message }}
                   </p>
+                  <div v-if="loading" class="mt-4 space-y-2">
+                    <div class="flex items-center justify-between text-xs font-medium text-gray-500 dark:text-gray-400">
+                      <span>{{ loadingLabel }}</span>
+                      <span>Please wait</span>
+                    </div>
+                    <div
+                      role="progressbar"
+                      aria-valuetext="In progress"
+                      class="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800"
+                    >
+                      <div class="h-full w-1/2 animate-[confirm-progress_1.1s_ease-in-out_infinite] rounded-full bg-current" :class="variantClasses.iconColor"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <!-- Actions -->
               <div class="mt-6 flex justify-end gap-3">
                 <button
-                  @click="emit('cancel')"
-                  class="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 focus:outline-none transition-all"
+                  @click="handleCancel"
+                  :disabled="loading"
+                  class="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 focus:outline-none transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {{ cancelLabel }}
                 </button>
                 <button
-                  @click="emit('confirm')"
-                  class="rounded-lg px-4 py-2 text-sm font-medium focus:outline-none transition-all"
+                  @click="handleConfirm"
+                  :disabled="loading"
+                  class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium focus:outline-none transition-all disabled:cursor-wait disabled:opacity-80"
                   :class="variantClasses.button"
                 >
-                  {{ confirmLabel }}
+                  <span v-if="loading" class="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                  {{ loading ? loadingLabel : confirmLabel }}
                 </button>
               </div>
             </div>
@@ -164,3 +194,17 @@ const variantClasses = computed(() => {
     </Transition>
   </Teleport>
 </template>
+
+<style scoped>
+@keyframes confirm-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  50% {
+    transform: translateX(60%);
+  }
+  100% {
+    transform: translateX(210%);
+  }
+}
+</style>

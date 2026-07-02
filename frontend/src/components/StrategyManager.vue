@@ -20,6 +20,8 @@ const pendingSuggestionMerge = ref<{ strategyId: string; sources: string[]; targ
 const mergeResult = ref<{ message: string; type: 'success' | 'error' } | null>(null)
 const duplicateReview = ref<{ targetStrategy: string; groups: MergeDuplicateGroup[]; selectedIds: Set<number> } | null>(null)
 const duplicateDeleteLoading = ref(false)
+const suggestionMergeLoading = ref(false)
+const preferredOriginalStrategy = ref<string | null>(null)
 
 // ─── Manual Merge state ──────────────────────────────────────────────────────
 const manualSearchQuery = ref('')
@@ -69,6 +71,7 @@ async function confirmSuggestionMerge() {
   if (auth.isImpersonating) return
   if (!pendingSuggestionMerge.value) return
   const { sources, target } = pendingSuggestionMerge.value
+  suggestionMergeLoading.value = true
   try {
     const result = await betStore.mergeStrategies(sources, target)
     handleMergeResult(result, `Merged ${result.merged_bets} bets into "${target}"`)
@@ -78,6 +81,7 @@ async function confirmSuggestionMerge() {
   }
   showSuggestionConfirm.value = false
   pendingSuggestionMerge.value = null
+  suggestionMergeLoading.value = false
   setTimeout(() => { mergeResult.value = null }, 4000)
 }
 
@@ -171,10 +175,12 @@ function handleMergeResult(result: MergeStrategiesResponse, baseMessage: string)
   const groups = result.duplicate_groups || []
   if (groups.length === 0) {
     duplicateReview.value = null
+    preferredOriginalStrategy.value = null
     mergeResult.value = { message: baseMessage, type: 'success' }
     return
   }
 
+  preferredOriginalStrategy.value = null
   duplicateReview.value = {
     targetStrategy: result.target_strategy,
     groups,
@@ -217,6 +223,7 @@ function isLastRemainingDuplicate(group: MergeDuplicateGroup, id: number) {
 
 function toggleDuplicateSelection(group: MergeDuplicateGroup, id: number) {
   if (!duplicateReview.value) return
+  preferredOriginalStrategy.value = null
   const next = new Set(duplicateReview.value.selectedIds)
   if (next.has(id)) {
     next.delete(id)
@@ -230,6 +237,7 @@ function toggleDuplicateSelection(group: MergeDuplicateGroup, id: number) {
 
 function keepDuplicateBets() {
   duplicateReview.value = null
+  preferredOriginalStrategy.value = null
   mergeResult.value = { message: 'Duplicate bets kept.', type: 'success' }
 }
 
@@ -241,6 +249,7 @@ async function deleteSelectedDuplicateBets() {
     const betIds = Array.from(duplicateReview.value.selectedIds)
     const result = await betStore.deleteMergeDuplicateBets(targetStrategy, betIds)
     duplicateReview.value = null
+    preferredOriginalStrategy.value = null
     mergeResult.value = {
       message: `Deleted ${result.deleted_duplicates} duplicate ${pluralize(result.deleted_duplicates, 'bet', 'bets')}.`,
       type: 'success',
@@ -300,6 +309,63 @@ function deleteCheckboxLabel(group: MergeDuplicateGroup, id: number) {
 
 function marketLabel(group: MergeDuplicateGroup) {
   return group.market_kind === 'market_id' ? `Market ID ${group.market_value}` : group.market_value
+}
+
+function duplicateOriginalStrategyOptions() {
+  if (!duplicateReview.value) return []
+  const options = new Map<string, { strategy: string; groups: number; bets: number }>()
+
+  for (const group of duplicateReview.value.groups) {
+    const groupStrategies = new Set<string>()
+    for (const bet of group.bets) {
+      if (!bet.original_strategy) continue
+      const option = options.get(bet.original_strategy) || {
+        strategy: bet.original_strategy,
+        groups: 0,
+        bets: 0,
+      }
+      option.bets += 1
+      options.set(bet.original_strategy, option)
+      groupStrategies.add(bet.original_strategy)
+    }
+    for (const strategy of groupStrategies) {
+      const option = options.get(strategy)
+      if (option) option.groups += 1
+    }
+  }
+
+  return Array.from(options.values()).sort((a, b) => (
+    b.groups - a.groups ||
+    b.bets - a.bets ||
+    a.strategy.localeCompare(b.strategy)
+  ))
+}
+
+function applyOriginalStrategyPreference(strategy: string) {
+  if (!duplicateReview.value) return
+  if (preferredOriginalStrategy.value === strategy) {
+    preferredOriginalStrategy.value = null
+    return
+  }
+
+  preferredOriginalStrategy.value = strategy
+  const next = new Set(duplicateReview.value.selectedIds)
+  for (const group of duplicateReview.value.groups) {
+    const preferredBet = group.bets.find(bet => bet.original_strategy === strategy)
+    if (!preferredBet) continue
+    for (const bet of group.bets) {
+      if (bet.id === preferredBet.id) {
+        next.delete(bet.id)
+      } else {
+        next.add(bet.id)
+      }
+    }
+  }
+  duplicateReview.value = { ...duplicateReview.value, selectedIds: next }
+}
+
+function originalStrategyPreferenceLabel(option: { groups: number; bets: number }) {
+  return `${option.groups} ${pluralize(option.groups, 'group', 'groups')} · ${option.bets} ${pluralize(option.bets, 'row', 'rows')}`
 }
 
 function sourceStrategyLabel(value: string | null) {
@@ -429,6 +495,30 @@ function duplicateReviewKeepDisabled() {
             <div v-if="duplicateDeleteLoading" class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
             {{ duplicateDeleteButtonLabel() }}
           </button>
+        </div>
+      </div>
+
+      <div v-if="duplicateOriginalStrategyOptions().length > 0" class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/20 p-3">
+        <p class="text-xs font-semibold text-gray-700 dark:text-gray-300">Prefer original strategy</p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <label
+            v-for="option in duplicateOriginalStrategyOptions()"
+            :key="option.strategy"
+            class="inline-flex max-w-full items-start gap-2 rounded-lg border px-3 py-2 text-xs transition-colors cursor-pointer"
+            :class="preferredOriginalStrategy === option.strategy ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+          >
+            <input
+              type="checkbox"
+              :checked="preferredOriginalStrategy === option.strategy"
+              :disabled="duplicateDeleteLoading"
+              @change="applyOriginalStrategyPreference(option.strategy)"
+              class="mt-0.5 text-emerald-500 focus:ring-emerald-500 dark:bg-gray-800 dark:border-gray-600 rounded disabled:opacity-40"
+            />
+            <span class="min-w-0">
+              <span class="block max-w-md truncate font-medium">{{ option.strategy }}</span>
+              <span class="block text-[10px] opacity-75">{{ originalStrategyPreferenceLabel(option) }}</span>
+            </span>
+          </label>
         </div>
       </div>
 
@@ -758,6 +848,8 @@ function duplicateReviewKeepDisabled() {
       title="Merge Strategies"
       :message="pendingSuggestionMerge ? `This will rename ${pendingSuggestionMerge.sources.length} strategies into '${pendingSuggestionMerge.target}'. Duplicate bets can be reviewed after the merge.` : ''"
       confirm-label="Merge"
+      loading-label="Merging strategies"
+      :loading="suggestionMergeLoading"
       variant="warning"
       @confirm="confirmSuggestionMerge"
       @cancel="showSuggestionConfirm = false; pendingSuggestionMerge = null"
@@ -768,6 +860,8 @@ function duplicateReviewKeepDisabled() {
       title="Merge Strategies"
       :message="`This will merge ${selectedForMerge.size} strategies into '${manualTargetName}'. All bets from the source strategies will be renamed. Duplicate bets can be reviewed after the merge.`"
       confirm-label="Merge"
+      loading-label="Merging strategies"
+      :loading="manualLoading"
       variant="warning"
       @confirm="confirmManualMerge"
       @cancel="showManualConfirm = false"
