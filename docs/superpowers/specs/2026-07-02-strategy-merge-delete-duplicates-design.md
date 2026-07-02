@@ -10,15 +10,17 @@ The existing `/strategies/merge` endpoint renames every non-deleted bet in the s
 
 ## Proposed Behavior
 
-Keep the existing merge behavior as the default. Add a `delete_duplicates` boolean to the merge request. When it is false or omitted, the endpoint behaves as it does today.
+Keep the merge itself non-destructive. After source strategy bets are renamed into the target strategy, inspect the authenticated user's non-deleted, non-archived bets in the target strategy and return duplicate groups for review.
 
-When `delete_duplicates` is true:
+Each duplicate group should include:
 
-- First rename source strategy bets into the target strategy.
-- Then inspect the authenticated user's non-deleted, non-archived bets in the target strategy.
-- Group duplicates by the same bet name and same market.
-- Keep exactly one bet in each duplicate group.
-- Delete every later duplicate in that group.
+- the shared bet name and market
+- every duplicate bet in the group
+- relevant comparison fields, including event, timestamps, odds, type, status, and original strategy where it can be captured during the merge
+- a suggested keep bet
+- suggested delete bet IDs
+
+The UI should auto-select the suggested delete rows, but the user can change the selection before deleting anything. The user can also keep all duplicates.
 
 The bet to keep is selected by earliest timestamp using this order:
 
@@ -38,56 +40,62 @@ Only records with enough information to form both sides of the key should be con
 
 ## Backend Contract
 
-Extend `MergeStrategiesRequest` with:
-
-```python
-delete_duplicates: bool = False
-```
-
 Extend the merge response with:
 
 ```json
 {
   "ok": true,
   "merged_bets": 12,
-  "deleted_duplicates": 3,
+  "duplicate_groups": [
+    {
+      "bet_name": "Runner",
+      "market": "Market One",
+      "suggested_keep_bet_id": 10,
+      "suggested_delete_bet_ids": [11],
+      "bets": [
+        {
+          "id": 10,
+          "bet_name": "Runner",
+          "market": "Market One",
+          "event": "Event One",
+          "original_strategy": "Target",
+          "placed_date": "2026-01-01T12:00:00",
+          "avg_price_matched": 2.0
+        }
+      ]
+    }
+  ],
   "source_strategies": ["Old Name"],
   "target_strategy": "Target Name"
 }
 ```
 
-Duplicate deletion must stay scoped to the authenticated user's target strategy and must not affect other users, archived bets, or already deleted bets.
+Add a separate confirmation endpoint that accepts the target strategy and selected bet IDs. It must hard-delete only selected rows that still belong to duplicate groups for the authenticated user's target strategy. It must reject requests that would delete every bet in a duplicate group.
+
+Duplicate review and deletion must stay scoped to the authenticated user's target strategy and must not affect other users, archived bets, or already deleted bets.
 
 ## Frontend Behavior
 
-Add a checkbox to both merge entry points:
+After a merge completes, if duplicate groups are returned, show a grouped duplicate review table. Each group should make it clear which rows are duplicates of each other and should include bet name, market, event, original strategy, placed/matched/settled/start timestamps, odds, type, and status.
 
-- Auto-suggestion merge detail panel.
-- Manual merge controls.
+Auto-select the suggested delete rows. The user can change row selection, but the UI should keep at least one row unselected in each group. Provide two actions:
 
-Checkbox label:
+- Keep duplicates
+- Delete selected duplicates
 
-```text
-Delete duplicate bets after merge
-```
-
-Help text:
-
-```text
-Destructive and cannot be undone. Keeps the first duplicate by placed date, then matched date, settled date, start time, and database ID; deletes later duplicates with the same bet name and market. Odds are ignored.
-```
-
-If checked, the confirmation dialog should explicitly mention duplicate deletion. Success toasts should include both the merged bet count and deleted duplicate count.
+No duplicate deletion checkbox is shown before merge.
 
 ## Testing
 
 Backend tests should cover:
 
-- Default merge still renames strategies and deletes no duplicates.
-- Opt-in duplicate deletion keeps the earliest duplicate by `placed_date`.
+- Merge still renames strategies and deletes no duplicates.
+- Merge returns duplicate review groups with suggested delete IDs.
 - Timestamp fallback order handles missing `placed_date`.
 - Equal timestamps keep the lowest database `id`.
-- Other users' duplicate-looking bets are not touched.
-- Archived and already deleted bets are not considered for deletion.
+- Other users' duplicate-looking bets are not included.
+- Archived and already deleted bets are not considered.
+- Confirmed deletion hard-deletes only selected duplicate rows.
+- Confirmed deletion rejects attempts to delete every bet in a group.
 
 Frontend tests are not required unless the project already has a practical component test setup for this component. Type checking/build verification is sufficient for the UI wiring.

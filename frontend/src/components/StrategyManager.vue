@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useBetStore } from '../stores/betStore'
 import { useAuthStore } from '../stores/authStore'
 import ConfirmDialog from './ConfirmDialog.vue'
+import type { MergeDuplicateGroup, MergeStrategiesResponse } from '../services/api'
 
 const betStore = useBetStore()
 const auth = useAuthStore()
@@ -17,6 +18,8 @@ const suggestionTargets = ref<Record<string, string>>({})
 const showSuggestionConfirm = ref(false)
 const pendingSuggestionMerge = ref<{ strategyId: string; sources: string[]; target: string } | null>(null)
 const mergeResult = ref<{ message: string; type: 'success' | 'error' } | null>(null)
+const duplicateReview = ref<{ targetStrategy: string; groups: MergeDuplicateGroup[]; selectedIds: Set<number> } | null>(null)
+const duplicateDeleteLoading = ref(false)
 
 // ─── Manual Merge state ──────────────────────────────────────────────────────
 const manualSearchQuery = ref('')
@@ -68,10 +71,7 @@ async function confirmSuggestionMerge() {
   const { sources, target } = pendingSuggestionMerge.value
   try {
     const result = await betStore.mergeStrategies(sources, target)
-    mergeResult.value = {
-      message: `Merged ${result.merged_bets} bets into "${target}"`,
-      type: 'success',
-    }
+    handleMergeResult(result, `Merged ${result.merged_bets} bets into "${target}"`)
     expandedSuggestion.value = null
   } catch {
     mergeResult.value = { message: 'Merge failed. Please try again.', type: 'error' }
@@ -138,10 +138,7 @@ async function confirmManualMerge() {
   manualLoading.value = true
   try {
     const result = await betStore.mergeStrategies(sources, target)
-    mergeResult.value = {
-      message: `Merged ${result.merged_bets} bets from ${sources.length} strategies into "${target}"`,
-      type: 'success',
-    }
+    handleMergeResult(result, `Merged ${result.merged_bets} bets from ${sources.length} strategies into "${target}"`)
     selectedForMerge.value = new Set()
     manualTargetName.value = ''
   } catch {
@@ -165,6 +162,227 @@ function formatPL(value: number) {
   const formatted = Math.abs(value).toFixed(2)
   return value >= 0 ? `+£${formatted}` : `-£${formatted}`
 }
+
+function pluralize(count: number, singular: string, plural: string) {
+  return count === 1 ? singular : plural
+}
+
+function handleMergeResult(result: MergeStrategiesResponse, baseMessage: string) {
+  const groups = result.duplicate_groups || []
+  if (groups.length === 0) {
+    duplicateReview.value = null
+    mergeResult.value = { message: baseMessage, type: 'success' }
+    return
+  }
+
+  duplicateReview.value = {
+    targetStrategy: result.target_strategy,
+    groups,
+    selectedIds: new Set(groups.flatMap(group => group.suggested_delete_bet_ids)),
+  }
+  mergeResult.value = {
+    message: `${baseMessage}. Review ${groups.length} duplicate ${pluralize(groups.length, 'group', 'groups')} before deleting anything.`,
+    type: 'success',
+  }
+}
+
+function formatDateTime(dateStr: string | null) {
+  if (!dateStr) return '—'
+  return new Date(dateStr).toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatOdds(value: number | null) {
+  return typeof value === 'number' ? value.toFixed(2) : '—'
+}
+
+function duplicateSelectionCount() {
+  return duplicateReview.value?.selectedIds.size || 0
+}
+
+function isDuplicateSelected(id: number) {
+  return !!duplicateReview.value?.selectedIds.has(id)
+}
+
+function isLastRemainingDuplicate(group: MergeDuplicateGroup, id: number) {
+  if (!duplicateReview.value || duplicateReview.value.selectedIds.has(id)) return false
+  const selectedInGroup = group.bets.filter(bet => duplicateReview.value?.selectedIds.has(bet.id)).length
+  return selectedInGroup >= group.bets.length - 1
+}
+
+function toggleDuplicateSelection(group: MergeDuplicateGroup, id: number) {
+  if (!duplicateReview.value) return
+  const next = new Set(duplicateReview.value.selectedIds)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    const selectedInGroup = group.bets.filter(bet => next.has(bet.id)).length
+    if (selectedInGroup >= group.bets.length - 1) return
+    next.add(id)
+  }
+  duplicateReview.value = { ...duplicateReview.value, selectedIds: next }
+}
+
+function keepDuplicateBets() {
+  duplicateReview.value = null
+  mergeResult.value = { message: 'Duplicate bets kept.', type: 'success' }
+}
+
+async function deleteSelectedDuplicateBets() {
+  if (!duplicateReview.value || duplicateReview.value.selectedIds.size === 0) return
+  duplicateDeleteLoading.value = true
+  try {
+    const targetStrategy = duplicateReview.value.targetStrategy
+    const betIds = Array.from(duplicateReview.value.selectedIds)
+    const result = await betStore.deleteMergeDuplicateBets(targetStrategy, betIds)
+    duplicateReview.value = null
+    mergeResult.value = {
+      message: `Deleted ${result.deleted_duplicates} duplicate ${pluralize(result.deleted_duplicates, 'bet', 'bets')}.`,
+      type: 'success',
+    }
+  } catch {
+    mergeResult.value = { message: 'Duplicate deletion failed. Please try again.', type: 'error' }
+  }
+  duplicateDeleteLoading.value = false
+}
+
+function rowStateLabel(group: MergeDuplicateGroup, id: number) {
+  if (isDuplicateSelected(id)) return 'Delete'
+  if (group.suggested_keep_bet_id === id) return 'Suggested keep'
+  return 'Keep'
+}
+
+function rowStateClass(group: MergeDuplicateGroup, id: number) {
+  if (isDuplicateSelected(id)) return 'text-rose-500 bg-rose-500/10 border-rose-500/20'
+  if (group.suggested_keep_bet_id === id) return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+  return 'text-gray-500 bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+}
+
+function duplicateGroupTitle(group: MergeDuplicateGroup) {
+  return `${group.bet_name || 'Unknown bet'} · ${group.market || 'Unknown market'}`
+}
+
+function duplicateGroupMeta(group: MergeDuplicateGroup) {
+  return `${group.bets.length} duplicate ${pluralize(group.bets.length, 'row', 'rows')}`
+}
+
+function groupOriginalStrategies(group: MergeDuplicateGroup) {
+  const strategies = Array.from(new Set(group.bets.map(bet => bet.original_strategy).filter(Boolean)))
+  return strategies.join(', ')
+}
+
+function duplicateReviewTotalRows() {
+  return duplicateReview.value?.groups.reduce((total, group) => total + group.bets.length, 0) || 0
+}
+
+function duplicateReviewSelectedLabel() {
+  const count = duplicateSelectionCount()
+  return `${count} selected for deletion`
+}
+
+function duplicateDeleteButtonLabel() {
+  const count = duplicateSelectionCount()
+  if (duplicateDeleteLoading.value) return 'Deleting duplicates'
+  return `Delete ${count} selected ${pluralize(count, 'duplicate', 'duplicates')}`
+}
+
+function deleteCheckboxLabel(group: MergeDuplicateGroup, id: number) {
+  if (isLastRemainingDuplicate(group, id)) {
+    return 'At least one bet in each group must be kept'
+  }
+  return 'Select duplicate bet for deletion'
+}
+
+function marketLabel(group: MergeDuplicateGroup) {
+  return group.market_kind === 'market_id' ? `Market ID ${group.market_value}` : group.market_value
+}
+
+function sourceStrategyLabel(value: string | null) {
+  return value || 'Unknown'
+}
+
+function betNameLabel(value: string | null) {
+  return value || 'Unknown bet'
+}
+
+function marketNameLabel(value: string | null) {
+  return value || 'Unknown market'
+}
+
+function eventLabel(value: string | null) {
+  return value || '—'
+}
+
+function statusLabel(value: string | null) {
+  return value || '—'
+}
+
+function betTypeLabel(value: string | null) {
+  return value || '—'
+}
+
+function originalStrategyTitle(value: string | null) {
+  return value ? `Original strategy: ${value}` : 'Original strategy unavailable'
+}
+
+function groupOriginTitle(group: MergeDuplicateGroup) {
+  const strategies = groupOriginalStrategies(group)
+  return strategies ? `Original strategies: ${strategies}` : 'Original strategies unavailable'
+}
+
+function duplicateReviewSummary() {
+  if (!duplicateReview.value) return ''
+  return `${duplicateReview.value.groups.length} groups · ${duplicateReviewTotalRows()} rows · ${duplicateReviewSelectedLabel()}`
+}
+
+function deleteSelectionDisabled(group: MergeDuplicateGroup, id: number) {
+  return duplicateDeleteLoading.value || isLastRemainingDuplicate(group, id)
+}
+
+function selectedDuplicateIds() {
+  return duplicateReview.value ? Array.from(duplicateReview.value.selectedIds) : []
+}
+
+function hasSelectedDuplicates() {
+  return selectedDuplicateIds().length > 0
+}
+
+function duplicateGroupSuggestedDeleteTitle(group: MergeDuplicateGroup) {
+  return `${group.suggested_delete_bet_ids.length} suggested ${pluralize(group.suggested_delete_bet_ids.length, 'deletion', 'deletions')}`
+}
+
+function duplicateGroupKeepTitle(group: MergeDuplicateGroup) {
+  return `Suggested keep: #${group.suggested_keep_bet_id}`
+}
+
+function duplicateRowKey(group: MergeDuplicateGroup, id: number) {
+  return `${group.key}-${id}`
+}
+
+function duplicateGroupKey(group: MergeDuplicateGroup) {
+  return group.key
+}
+
+function duplicateGroupCountLabel(group: MergeDuplicateGroup) {
+  return `${group.bets.length} bets`
+}
+
+function duplicateReviewTargetLabel() {
+  return duplicateReview.value ? `Target strategy: ${duplicateReview.value.targetStrategy}` : ''
+}
+
+function duplicateReviewActionDisabled() {
+  return duplicateDeleteLoading.value || !hasSelectedDuplicates()
+}
+
+function duplicateReviewKeepDisabled() {
+  return duplicateDeleteLoading.value
+}
 </script>
 
 <template>
@@ -187,6 +405,119 @@ function formatPL(value: number) {
         {{ mergeResult.message }}
       </div>
     </Transition>
+
+    <!-- Duplicate review -->
+    <div v-if="duplicateReview" class="glass-card p-4 space-y-4 border border-amber-500/20">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Duplicate bets found</h3>
+          <p class="mt-1 text-xs text-gray-500">{{ duplicateReviewTargetLabel() }} · {{ duplicateReviewSummary() }}</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            @click="keepDuplicateBets"
+            :disabled="duplicateReviewKeepDisabled()"
+            class="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Keep duplicates
+          </button>
+          <button
+            @click="deleteSelectedDuplicateBets"
+            :disabled="duplicateReviewActionDisabled()"
+            class="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium text-white bg-rose-500 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg"
+          >
+            <div v-if="duplicateDeleteLoading" class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+            {{ duplicateDeleteButtonLabel() }}
+          </button>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div v-for="group in duplicateReview.groups" :key="duplicateGroupKey(group)" class="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div class="px-3 py-2 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-800">
+            <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ duplicateGroupTitle(group) }}</p>
+                <p class="text-xs text-gray-500" :title="groupOriginTitle(group)">
+                  {{ duplicateGroupMeta(group) }} · {{ marketLabel(group) }} · {{ groupOriginalStrategies(group) || 'Original strategy unavailable' }}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-1.5 text-[10px] font-semibold">
+                <span class="px-2 py-0.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-500" :title="duplicateGroupKeepTitle(group)">
+                  Keep #{{ group.suggested_keep_bet_id }}
+                </span>
+                <span class="px-2 py-0.5 rounded-full border border-rose-500/20 bg-rose-500/10 text-rose-500" :title="duplicateGroupSuggestedDeleteTitle(group)">
+                  {{ group.suggested_delete_bet_ids.length }} suggested
+                </span>
+                <span class="px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500">
+                  {{ duplicateGroupCountLabel(group) }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead>
+                <tr class="border-b border-gray-100 dark:border-gray-800/60">
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Delete</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Bet</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Market</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Event</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Original strategy</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Placed</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Matched</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Settled</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Start</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider text-right">Odds</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                  <th class="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="bet in group.bets"
+                  :key="duplicateRowKey(group, bet.id)"
+                  class="border-b border-gray-50 dark:border-gray-800/30 last:border-0"
+                  :class="{ 'bg-rose-500/5': isDuplicateSelected(bet.id), 'bg-emerald-500/5': group.suggested_keep_bet_id === bet.id && !isDuplicateSelected(bet.id) }"
+                >
+                  <td class="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      :checked="isDuplicateSelected(bet.id)"
+                      :disabled="deleteSelectionDisabled(group, bet.id)"
+                      :title="deleteCheckboxLabel(group, bet.id)"
+                      @change="toggleDuplicateSelection(group, bet.id)"
+                      class="text-rose-500 focus:ring-rose-500 dark:bg-gray-800 dark:border-gray-600 rounded disabled:opacity-40"
+                    />
+                  </td>
+                  <td class="px-3 py-2 min-w-40">
+                    <div class="flex flex-col gap-1">
+                      <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ betNameLabel(bet.bet_name) }}</span>
+                      <span class="w-fit text-[10px] font-semibold px-2 py-0.5 rounded-full border" :class="rowStateClass(group, bet.id)">
+                        {{ rowStateLabel(group, bet.id) }}
+                      </span>
+                    </div>
+                  </td>
+                  <td class="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 min-w-36">{{ marketNameLabel(bet.market) }}</td>
+                  <td class="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 min-w-32">{{ eventLabel(bet.event) }}</td>
+                  <td class="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 min-w-44" :title="originalStrategyTitle(bet.original_strategy)">
+                    {{ sourceStrategyLabel(bet.original_strategy) }}
+                  </td>
+                  <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{{ formatDateTime(bet.placed_date) }}</td>
+                  <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{{ formatDateTime(bet.matched_date) }}</td>
+                  <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{{ formatDateTime(bet.settled_date) }}</td>
+                  <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{{ formatDateTime(bet.start_time) }}</td>
+                  <td class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300 text-right tabular-nums">{{ formatOdds(bet.avg_price_matched) }}</td>
+                  <td class="px-3 py-2 text-xs text-gray-500">{{ betTypeLabel(bet.bet_type) }}</td>
+                  <td class="px-3 py-2 text-xs text-gray-500">{{ statusLabel(bet.status) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Sub-tabs -->
     <div class="pill-nav">
@@ -425,7 +756,7 @@ function formatPL(value: number) {
     <ConfirmDialog
       :open="showSuggestionConfirm && !!pendingSuggestionMerge"
       title="Merge Strategies"
-      :message="pendingSuggestionMerge ? `This will rename ${pendingSuggestionMerge.sources.length} strategies into '${pendingSuggestionMerge.target}'. This action cannot be undone.` : ''"
+      :message="pendingSuggestionMerge ? `This will rename ${pendingSuggestionMerge.sources.length} strategies into '${pendingSuggestionMerge.target}'. Duplicate bets can be reviewed after the merge.` : ''"
       confirm-label="Merge"
       variant="warning"
       @confirm="confirmSuggestionMerge"
@@ -435,7 +766,7 @@ function formatPL(value: number) {
     <ConfirmDialog
       :open="showManualConfirm"
       title="Merge Strategies"
-      :message="`This will merge ${selectedForMerge.size} strategies into '${manualTargetName}'. All bets from the source strategies will be renamed. This action cannot be undone.`"
+      :message="`This will merge ${selectedForMerge.size} strategies into '${manualTargetName}'. All bets from the source strategies will be renamed. Duplicate bets can be reviewed after the merge.`"
       confirm-label="Merge"
       variant="warning"
       @confirm="confirmManualMerge"

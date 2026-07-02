@@ -286,6 +286,23 @@ export const useBetStore = defineStore('bet', () => {
     }
   }
 
+  async function deleteMergeDuplicateBets(targetStrategy: string, betIds: number[]) {
+    startLoading()
+    try {
+      const result = await api.deleteMergeDuplicateBets(targetStrategy, betIds)
+      await loadFilterOptions()
+      await refreshAll()
+      await loadAllStrategies()
+      await loadMergeSuggestions()
+      return result
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    } finally {
+      finishLoading()
+    }
+  }
+
   async function refreshAll() {
     await Promise.all([
       loadSummaryStats(),
@@ -336,6 +353,7 @@ export const useBetStore = defineStore('bet', () => {
     loadMergeSuggestions,
     loadAllStrategies,
     mergeStrategies,
+    deleteMergeDuplicateBets,
     refreshAll,
   }
 })

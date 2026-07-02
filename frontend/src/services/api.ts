@@ -500,6 +500,47 @@ export interface MergeSuggestion {
   strategies: MergeSuggestionMember[]
 }
 
+export interface MergeDuplicateBet {
+  id: number
+  bet_id: string | null
+  bet_name: string | null
+  market: string | null
+  event: string | null
+  strategy: string | null
+  original_strategy: string | null
+  selection: string | null
+  description: string | null
+  market_id: string | null
+  market_name: string | null
+  placed_date: string | null
+  matched_date: string | null
+  settled_date: string | null
+  start_time: string | null
+  avg_price_matched: number | null
+  price_requested: number | null
+  bet_type: string | null
+  status: string | null
+}
+
+export interface MergeDuplicateGroup {
+  key: string
+  bet_name: string | null
+  market: string | null
+  market_kind: string
+  market_value: string
+  suggested_keep_bet_id: number
+  suggested_delete_bet_ids: number[]
+  bets: MergeDuplicateBet[]
+}
+
+export interface MergeStrategiesResponse {
+  ok: boolean
+  merged_bets: number
+  duplicate_groups: MergeDuplicateGroup[]
+  source_strategies?: string[]
+  target_strategy: string
+}
+
 export const getMergeSuggestions = async (): Promise<MergeSuggestion[]> => {
   const response = await api.get('/strategies/merge-suggestions')
   return response.data
@@ -508,10 +549,21 @@ export const getMergeSuggestions = async (): Promise<MergeSuggestion[]> => {
 export const mergeStrategies = async (
   sourceStrategies: string[],
   targetStrategy: string,
-): Promise<{ ok: boolean; merged_bets: number; target_strategy: string }> => {
+): Promise<MergeStrategiesResponse> => {
   const response = await api.post('/strategies/merge', {
     source_strategies: sourceStrategies,
     target_strategy: targetStrategy,
+  })
+  return response.data
+}
+
+export const deleteMergeDuplicateBets = async (
+  targetStrategy: string,
+  betIds: number[],
+): Promise<{ ok: boolean; deleted_duplicates: number; target_strategy: string }> => {
+  const response = await api.post('/strategies/merge/delete-duplicates', {
+    target_strategy: targetStrategy,
+    bet_ids: betIds,
   })
   return response.data
 }

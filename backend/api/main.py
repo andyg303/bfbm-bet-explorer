@@ -45,7 +45,11 @@ from api.commission import (
     net_profit_loss_expr,
     net_profit_loss_for_bet,
 )
-from api.strategy_actions import delete_archived_strategy_bets
+from api.strategy_actions import (
+    build_strategy_duplicate_groups,
+    delete_archived_strategy_bets,
+    delete_selected_duplicate_strategy_bets,
+)
 from api.strategy_comparison import build_strategy_comparison
 from api.auth import (
     get_current_user,
@@ -1160,6 +1164,11 @@ class MergeStrategiesRequest(BaseModel):
     target_strategy: str
 
 
+class DeleteMergeDuplicateBetsRequest(BaseModel):
+    target_strategy: str
+    bet_ids: List[int]
+
+
 @app.post("/strategies/merge")
 def merge_strategies(
     req: MergeStrategiesRequest,
@@ -1179,11 +1188,28 @@ def merge_strategies(
         raise HTTPException(status_code=400, detail="Target strategy name is required")
 
     target = req.target_strategy.strip()
+    original_strategy_by_id = {
+        row.id: row.strategy
+        for row in (
+            db.query(Bet.id, Bet.strategy)
+            .filter(
+                Bet.user_id == user.id,
+                Bet.strategy.in_(list(set(req.source_strategies + [target]))),
+                Bet.is_deleted == False,  # noqa: E712
+            )
+            .all()
+        )
+    }
 
     # Don't rename strategies that are already the target
     sources = [s for s in req.source_strategies if s != target]
     if not sources:
-        return {"ok": True, "merged_bets": 0, "target_strategy": target}
+        return {
+            "ok": True,
+            "merged_bets": 0,
+            "duplicate_groups": build_strategy_duplicate_groups(db, user.id, target, original_strategy_by_id),
+            "target_strategy": target,
+        }
 
     count = (
         db.query(Bet)
@@ -1198,9 +1224,29 @@ def merge_strategies(
     return {
         "ok": True,
         "merged_bets": count,
+        "duplicate_groups": build_strategy_duplicate_groups(db, user.id, target, original_strategy_by_id),
         "source_strategies": sources,
         "target_strategy": target,
     }
+
+
+@app.post("/strategies/merge/delete-duplicates")
+def delete_merge_duplicate_bets(
+    req: DeleteMergeDuplicateBetsRequest,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete selected duplicate bets after a strategy merge review."""
+    require_write_session(user)
+    target = req.target_strategy.strip() if req.target_strategy else ""
+    if not target:
+        raise HTTPException(status_code=400, detail="Target strategy name is required")
+    try:
+        count = delete_selected_duplicate_strategy_bets(db, user.id, target, req.bet_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    return {"ok": True, "deleted_duplicates": count, "target_strategy": target}
 
 
 @app.get("/strategies/all")
