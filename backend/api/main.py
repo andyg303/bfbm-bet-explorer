@@ -36,7 +36,18 @@ logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import get_db, SessionLocal, Bet, User, IngestionLog, AutomationToken, init_db
+from database import (
+    get_db,
+    SessionLocal,
+    Bet,
+    User,
+    IngestionLog,
+    AutomationToken,
+    StrategyFavorite,
+    StrategyGroup,
+    StrategyGroupMember,
+    init_db,
+)
 from scripts.ingest_bets import ingest_csv_file, sanitize_strategy_name, read_csv, normalize_columns
 from api.staking_utils import calculate_new_stake, calculate_new_pl, calculate_stake_or_liability, deduplicate_bets
 from api.commission import (
@@ -49,6 +60,7 @@ from api.strategy_actions import (
     build_strategy_duplicate_groups,
     delete_archived_strategy_bets,
     delete_selected_duplicate_strategy_bets,
+    rename_strategies_in_metadata,
 )
 from api.strategy_comparison import build_strategy_comparison
 from api.auth import (
@@ -1044,6 +1056,8 @@ def get_archived_strategies(
     query = db.query(
         Bet.strategy,
         func.count(Bet.id).label('num_bets'),
+        func.sum(Bet.profit_loss).label('gross_pl'),
+        func.sum(func.coalesce(Bet.commission_paid, 0.0)).label('commission_paid'),
         func.sum(net_profit_loss_expr()).label('total_pl'),
         func.sum(case((Bet.bet_type == 'LAY', Bet.lay_liability), else_=Bet.matched_amount)).label('total_staked'),
         func.avg(Bet.avg_price_matched).label('avg_odds'),
@@ -1069,6 +1083,9 @@ def get_archived_strategies(
         stats.append({
             "strategy": row.strategy,
             "num_bets": row.num_bets,
+            "gross_pl": round(float(row.gross_pl or 0), 2),
+            "commission_paid": round(float(row.commission_paid or 0), 2),
+            "net_pl": round(total_pl, 2),
             "total_pl": round(total_pl, 2),
             "total_staked": round(total_staked, 2),
             "roi": round(roi, 2),
@@ -1220,6 +1237,7 @@ def merge_strategies(
         )
         .update({Bet.strategy: target}, synchronize_session='fetch')
     )
+    rename_strategies_in_metadata(db, user.id, sources, target)
     db.commit()
     return {
         "ok": True,
@@ -1249,6 +1267,179 @@ def delete_merge_duplicate_bets(
     return {"ok": True, "deleted_duplicates": count, "target_strategy": target}
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Strategy favourites (stars) & groups
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _strategy_group_dict(group: StrategyGroup) -> dict:
+    return {
+        "id": group.id,
+        "name": group.name,
+        "strategies": sorted(m.strategy for m in group.members),
+    }
+
+
+def _user_strategy_group(db: Session, user_id: int, group_id: int) -> StrategyGroup:
+    group = (
+        db.query(StrategyGroup)
+        .filter(StrategyGroup.id == group_id, StrategyGroup.user_id == user_id)
+        .first()
+    )
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return group
+
+
+@app.get("/strategies/meta")
+def get_strategy_meta(
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Starred strategies and named strategy groups for the current user."""
+    starred = [
+        row.strategy
+        for row in db.query(StrategyFavorite.strategy)
+        .filter(StrategyFavorite.user_id == user.id)
+        .order_by(StrategyFavorite.strategy)
+        .all()
+    ]
+    groups = (
+        db.query(StrategyGroup)
+        .filter(StrategyGroup.user_id == user.id)
+        .order_by(func.lower(StrategyGroup.name))
+        .all()
+    )
+    return {
+        "starred": starred,
+        "groups": [_strategy_group_dict(g) for g in groups],
+    }
+
+
+class StarStrategyRequest(BaseModel):
+    strategy: str
+    starred: bool
+
+
+@app.post("/strategies/star")
+def star_strategy(
+    req: StarStrategyRequest,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Idempotently star or unstar a strategy for the current user."""
+    require_write_session(user)
+    strategy = (req.strategy or "").strip()
+    if not strategy:
+        raise HTTPException(status_code=400, detail="Strategy name is required")
+
+    existing = (
+        db.query(StrategyFavorite)
+        .filter(
+            StrategyFavorite.user_id == user.id,
+            StrategyFavorite.strategy == strategy,
+        )
+        .first()
+    )
+    if req.starred and not existing:
+        db.add(StrategyFavorite(user_id=user.id, strategy=strategy))
+        db.commit()
+    elif not req.starred and existing:
+        db.delete(existing)
+        db.commit()
+    return {"ok": True, "strategy": strategy, "starred": req.starred}
+
+
+class CreateStrategyGroupRequest(BaseModel):
+    name: str
+
+
+class StrategyGroupMembersRequest(BaseModel):
+    strategies: List[str]
+
+
+@app.post("/strategy-groups", status_code=201)
+def create_strategy_group(
+    req: CreateStrategyGroupRequest,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Create a named strategy group for the current user."""
+    require_write_session(user)
+    name = (req.name or "").strip()[:100]
+    if not name:
+        raise HTTPException(status_code=400, detail="Group name is required")
+    existing = (
+        db.query(StrategyGroup)
+        .filter(
+            StrategyGroup.user_id == user.id,
+            func.lower(StrategyGroup.name) == name.lower(),
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="A group with that name already exists")
+    group = StrategyGroup(user_id=user.id, name=name)
+    db.add(group)
+    db.commit()
+    db.refresh(group)
+    return _strategy_group_dict(group)
+
+
+@app.post("/strategy-groups/{group_id}/members")
+def add_strategy_group_members(
+    group_id: int,
+    req: StrategyGroupMembersRequest,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Add strategies to a group — idempotent, existing members are skipped."""
+    require_write_session(user)
+    group = _user_strategy_group(db, user.id, group_id)
+    strategies = {s.strip() for s in req.strategies if s and s.strip()}
+    if not strategies:
+        raise HTTPException(status_code=400, detail="No strategies provided")
+    existing = {m.strategy for m in group.members}
+    for strategy in sorted(strategies - existing):
+        db.add(StrategyGroupMember(group_id=group.id, strategy=strategy))
+    db.commit()
+    db.refresh(group)
+    return _strategy_group_dict(group)
+
+
+@app.delete("/strategy-groups/{group_id}/members")
+def remove_strategy_group_members(
+    group_id: int,
+    req: StrategyGroupMembersRequest,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Remove strategies from a group."""
+    require_write_session(user)
+    group = _user_strategy_group(db, user.id, group_id)
+    strategies = {s.strip() for s in req.strategies if s and s.strip()}
+    if not strategies:
+        raise HTTPException(status_code=400, detail="No strategies provided")
+    for member in [m for m in group.members if m.strategy in strategies]:
+        db.delete(member)
+    db.commit()
+    db.refresh(group)
+    return _strategy_group_dict(group)
+
+
+@app.delete("/strategy-groups/{group_id}")
+def delete_strategy_group(
+    group_id: int,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Delete a strategy group and its memberships."""
+    require_write_session(user)
+    group = _user_strategy_group(db, user.id, group_id)
+    db.delete(group)
+    db.commit()
+    return {"ok": True}
+
+
 @app.get("/strategies/all")
 def get_all_strategies(
     user: User = Depends(require_active_subscription),
@@ -1259,6 +1450,8 @@ def get_all_strategies(
         db.query(
             Bet.strategy,
             func.count(Bet.id).label("num_bets"),
+            func.sum(Bet.profit_loss).label("gross_pl"),
+            func.sum(func.coalesce(Bet.commission_paid, 0.0)).label("commission_paid"),
             func.sum(net_profit_loss_expr()).label("total_pl"),
             func.min(Bet.start_time).label("first_bet"),
             func.max(Bet.start_time).label("last_bet"),
@@ -1275,6 +1468,9 @@ def get_all_strategies(
         {
             "strategy": row.strategy,
             "num_bets": row.num_bets,
+            "gross_pl": round(float(row.gross_pl or 0), 2),
+            "commission_paid": round(float(row.commission_paid or 0), 2),
+            "net_pl": round(float(row.total_pl or 0), 2),
             "total_pl": round(float(row.total_pl or 0), 2),
             "first_bet": row.first_bet.isoformat() if row.first_bet else None,
             "last_bet": row.last_bet.isoformat() if row.last_bet else None,
@@ -1417,6 +1613,8 @@ def get_strategy_stats(
 
         stats = []
         for strategy, data in strategy_data.items():
+            gross_pl = 0
+            commission_paid = 0
             total_pl = 0
             total_staked = 0
             total_reverse_risk = 0
@@ -1431,6 +1629,8 @@ def get_strategy_stats(
                     reverse_risk = (bet.avg_price_matched - 1) * recalc["stake"]
                 else:
                     reverse_risk = recalc["stake"]
+                gross_pl += recalc["gross_pl"]
+                commission_paid += recalc["commission_paid"]
                 total_pl += recalc["pl"]
                 total_staked += recalc["liability"]
                 total_reverse_risk += reverse_risk
@@ -1442,6 +1642,9 @@ def get_strategy_stats(
             avg_odds = data['odds_sum'] / num_bets if num_bets > 0 else 0
             stats.append({
                 "strategy": strategy, "num_bets": num_bets,
+                "gross_pl": round(gross_pl, 2),
+                "commission_paid": round(commission_paid, 2),
+                "net_pl": round(total_pl, 2),
                 "total_pl": round(total_pl, 2), "roi": round(roi, 2),
                 "yield_pct": round(yield_pct, 2), "total_staked": round(total_staked, 2),
                 "avg_odds": round(avg_odds, 2), "win_rate": round(win_rate, 2),
@@ -1457,6 +1660,8 @@ def get_strategy_stats(
     query = db.query(
         Bet.strategy,
         func.count(Bet.id).label('num_bets'),
+        func.sum(Bet.profit_loss).label('gross_pl'),
+        func.sum(func.coalesce(Bet.commission_paid, 0.0)).label('commission_paid'),
         func.sum(net_profit_loss_expr()).label('total_pl'),
         func.sum(case((Bet.bet_type == 'LAY', Bet.lay_liability), else_=Bet.matched_amount)).label('total_staked'),
         func.sum(case(
@@ -1490,6 +1695,9 @@ def get_strategy_stats(
         bsp_fill_pct = (num_with_bsp / num_bets * 100) if num_bets > 0 else 0
         stats.append({
             "strategy": row.strategy, "num_bets": num_bets,
+            "gross_pl": round(float(row.gross_pl or 0), 2),
+            "commission_paid": round(float(row.commission_paid or 0), 2),
+            "net_pl": round(total_pl, 2),
             "total_pl": round(total_pl, 2), "roi": round(roi, 2),
             "yield_pct": round(yield_pct, 2), "total_staked": round(total_staked, 2),
             "avg_odds": round(float(row.avg_odds or 0), 2),
@@ -1666,6 +1874,8 @@ def get_summary_stats(
             total_bets = len(bets)
             num_strategies = len(set(b.strategy for b in bets if b.strategy))
         restaked = calculate_restaked_commission_map(bets, filters, user)
+        gross_pl = 0
+        commission_paid = 0
         total_pl = 0
         total_staked = 0
         total_reverse_risk = 0
@@ -1678,6 +1888,8 @@ def get_summary_stats(
                 reverse_risk = (bet.avg_price_matched - 1) * recalc["stake"]
             else:
                 reverse_risk = recalc["stake"]
+            gross_pl += recalc["gross_pl"]
+            commission_paid += recalc["commission_paid"]
             total_pl += recalc["pl"]
             total_staked += recalc["liability"]
             total_reverse_risk += reverse_risk
@@ -1688,28 +1900,43 @@ def get_summary_stats(
         win_rate = (num_wins / total_bets * 100) if total_bets > 0 else 0
         return {
             "num_bets": total_bets, "num_wins": num_wins,
-            "win_rate": round(win_rate, 2), "total_pl": round(total_pl, 2),
+            "win_rate": round(win_rate, 2),
+            "gross_pl": round(gross_pl, 2),
+            "commission_paid": round(commission_paid, 2),
+            "net_pl": round(total_pl, 2),
+            "total_pl": round(total_pl, 2),
             "total_staked": round(total_staked, 2), "roi": round(roi, 2),
             "yield_pct": round(yield_pct, 2), "num_strategies": num_strategies,
         }
 
-    total_pl = query.with_entities(func.sum(net_profit_loss_expr())).scalar()
-    total_staked = query.with_entities(
-        func.sum(case((Bet.bet_type == 'BACK', Bet.matched_amount), else_=Bet.lay_liability))
-    ).scalar()
-    total_reverse_risk = query.with_entities(func.sum(case(
-        (Bet.bet_type == 'BACK', (Bet.avg_price_matched - 1) * Bet.matched_amount),
-        else_=Bet.matched_amount,
-    ))).scalar()
-    num_wins = query.filter(net_profit_loss_expr() > 0).count()
+    aggregate = query.with_entities(
+        func.sum(Bet.profit_loss).label("gross_pl"),
+        func.sum(func.coalesce(Bet.commission_paid, 0.0)).label("commission_paid"),
+        func.sum(net_profit_loss_expr()).label("total_pl"),
+        func.sum(case((Bet.bet_type == 'BACK', Bet.matched_amount), else_=Bet.lay_liability)).label("total_staked"),
+        func.sum(case(
+            (Bet.bet_type == 'BACK', (Bet.avg_price_matched - 1) * Bet.matched_amount),
+            else_=Bet.matched_amount,
+        )).label("total_reverse_risk"),
+        func.sum(case((net_profit_loss_expr() > 0, 1), else_=0)).label("num_wins"),
+    ).one()
+    gross_pl = float(aggregate.gross_pl or 0)
+    commission_paid = float(aggregate.commission_paid or 0)
+    total_pl = float(aggregate.total_pl or 0)
+    total_staked = float(aggregate.total_staked or 0)
+    total_reverse_risk = float(aggregate.total_reverse_risk or 0)
+    num_wins = int(aggregate.num_wins or 0)
     roi = (float(total_pl) / float(total_staked) * 100) if total_staked and total_pl else 0
     yield_pct = (float(total_pl) / float(total_reverse_risk) * 100) if total_reverse_risk and total_pl else 0
     win_rate = (num_wins / total_bets * 100) if total_bets > 0 else 0
     return {
         "num_bets": total_bets, "num_wins": num_wins,
         "win_rate": round(win_rate, 2),
-        "total_pl": round(float(total_pl), 2) if total_pl else 0,
-        "total_staked": round(float(total_staked), 2) if total_staked else 0,
+        "gross_pl": round(gross_pl, 2),
+        "commission_paid": round(commission_paid, 2),
+        "net_pl": round(total_pl, 2),
+        "total_pl": round(total_pl, 2),
+        "total_staked": round(total_staked, 2),
         "roi": round(roi, 2), "yield_pct": round(yield_pct, 2),
         "num_strategies": num_strategies,
     }

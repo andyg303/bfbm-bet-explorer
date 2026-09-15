@@ -11,6 +11,9 @@ def _empty_stats(strategy: str) -> dict[str, Any]:
     return {
         "strategy": strategy,
         "num_bets": 0,
+        "gross_pl": 0,
+        "commission_paid": 0,
+        "net_pl": 0,
         "total_pl": 0,
         "roi": 0,
         "yield_pct": 0,
@@ -165,12 +168,16 @@ def build_strategy_comparison(
             continue
 
         if recalc:
+            gross_pl = float(recalc["gross_pl"])
+            commission_paid = float(recalc["commission_paid"])
             pl = float(recalc["pl"])
             actual_risk = float(recalc["liability"])
             stake = float(recalc["stake"])
         else:
             if bet.profit_loss is None:
                 continue
+            gross_pl = float(bet.profit_loss or 0)
+            commission_paid = float(bet.commission_paid or 0)
             pl = float(net_profit_loss_for_bet(bet) or 0)
             stake = float(bet.matched_amount or 0)
             if bet.bet_type == "LAY":
@@ -188,6 +195,9 @@ def build_strategy_comparison(
         bucket = buckets[bet.strategy]
         stats = bucket["stats"]
         stats["num_bets"] += 1
+        stats["gross_pl"] += gross_pl
+        stats["commission_paid"] += commission_paid
+        stats["net_pl"] += pl
         stats["total_pl"] += pl
         stats["total_staked"] += actual_risk
         stats["num_back"] += 1 if bet.bet_type == "BACK" else 0
@@ -219,6 +229,9 @@ def build_strategy_comparison(
         total_staked = stats["total_staked"]
         total_reverse_risk = bucket["total_reverse_risk"]
 
+        stats["gross_pl"] = round(stats["gross_pl"], 2)
+        stats["commission_paid"] = round(stats["commission_paid"], 2)
+        stats["net_pl"] = round(total_pl, 2)
         stats["total_pl"] = round(total_pl, 2)
         stats["total_staked"] = round(total_staked, 2)
         stats["roi"] = round((total_pl / total_staked * 100) if total_staked > 0 else 0, 2)

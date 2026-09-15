@@ -162,9 +162,14 @@ function formatDate(dateStr: string | null) {
   })
 }
 
-function formatPL(value: number) {
-  const formatted = Math.abs(value).toFixed(2)
-  return value >= 0 ? `+£${formatted}` : `-£${formatted}`
+function formatPL(value: number | null | undefined) {
+  const safeValue = value ?? 0
+  const formatted = Math.abs(safeValue).toFixed(2)
+  return safeValue >= 0 ? `+£${formatted}` : `-£${formatted}`
+}
+
+function formatMoney(value: number | null | undefined) {
+  return `£${(value ?? 0).toFixed(2)}`
 }
 
 function pluralize(count: number, singular: string, plural: string) {
@@ -749,13 +754,15 @@ function duplicateReviewKeepDisabled() {
                   </th>
                   <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Strategy</th>
                   <th class="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Bets</th>
-                  <th class="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">P/L</th>
+                  <th class="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Gross P/L</th>
+                  <th class="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Comm.</th>
+                  <th class="px-4 py-2.5 text-right text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Net P/L</th>
                   <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Period</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="filteredStrategies.length === 0">
-                  <td colspan="5" class="px-4 py-8 text-center text-sm text-gray-500">
+                  <td colspan="7" class="px-4 py-8 text-center text-sm text-gray-500">
                     No strategies found.
                   </td>
                 </tr>
@@ -776,8 +783,14 @@ function duplicateReviewKeepDisabled() {
                   </td>
                   <td class="px-4 py-2.5 text-sm font-medium text-gray-800 dark:text-gray-200">{{ strat.strategy }}</td>
                   <td class="px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 text-right tabular-nums">{{ strat.num_bets.toLocaleString() }}</td>
-                  <td class="px-4 py-2.5 text-sm text-right tabular-nums" :class="strat.total_pl >= 0 ? 'text-emerald-500' : 'text-rose-500'">
-                    {{ formatPL(strat.total_pl) }}
+                  <td class="px-4 py-2.5 text-sm text-right tabular-nums" :class="(strat.gross_pl ?? strat.total_pl) >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+                    {{ formatPL(strat.gross_pl ?? strat.total_pl) }}
+                  </td>
+                  <td class="px-4 py-2.5 text-sm text-right tabular-nums text-amber-500">
+                    {{ formatMoney(strat.commission_paid) }}
+                  </td>
+                  <td class="px-4 py-2.5 text-sm text-right tabular-nums" :class="(strat.net_pl ?? strat.total_pl) >= 0 ? 'text-emerald-500' : 'text-rose-500'">
+                    {{ formatPL(strat.net_pl ?? strat.total_pl) }}
                   </td>
                   <td class="px-4 py-2.5 text-xs text-gray-500 whitespace-nowrap">
                     {{ formatDate(strat.first_bet) }} – {{ formatDate(strat.last_bet) }}

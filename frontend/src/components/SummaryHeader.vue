@@ -8,6 +8,9 @@ const stats = computed(() => betStore.summaryStats || {
   num_bets: 0,
   num_wins: 0,
   win_rate: 0,
+  gross_pl: 0,
+  commission_paid: 0,
+  net_pl: 0,
   total_pl: 0,
   total_staked: 0,
   roi: 0,
@@ -15,10 +18,13 @@ const stats = computed(() => betStore.summaryStats || {
 })
 
 const numStrategies = computed(() => betStore.strategyStats?.length || 0)
+const grossPL = computed(() => stats.value.gross_pl ?? stats.value.total_pl ?? 0)
+const commissionPaid = computed(() => stats.value.commission_paid ?? 0)
+const netPL = computed(() => stats.value.net_pl ?? stats.value.total_pl ?? 0)
 </script>
 
 <template>
-  <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-3">
     <div class="stat-card">
       <div class="flex items-center gap-2">
         <div class="w-7 h-7 rounded-lg bg-sky-500/10 flex items-center justify-center">
@@ -51,13 +57,37 @@ const numStrategies = computed(() => betStore.strategyStats?.length || 0)
 
     <div class="stat-card">
       <div class="flex items-center gap-2">
-        <div class="w-7 h-7 rounded-lg flex items-center justify-center" :class="(stats.total_pl || 0) >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'">
-          <svg class="w-3.5 h-3.5" :class="(stats.total_pl || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <div class="w-7 h-7 rounded-lg flex items-center justify-center" :class="grossPL >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'">
+          <svg class="w-3.5 h-3.5" :class="grossPL >= 0 ? 'text-emerald-400' : 'text-rose-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
         </div>
-        <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">P/L (pts)</div>
+        <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Gross P/L</div>
       </div>
-      <div class="mt-2.5 text-2xl font-bold font-mono" :class="(stats.total_pl || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
-        {{ (stats.total_pl || 0) >= 0 ? '+' : '' }}{{ (stats.total_pl || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+      <div class="mt-2.5 text-2xl font-bold font-mono" :class="grossPL >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+        {{ grossPL >= 0 ? '+' : '' }}{{ grossPL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+          <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 4.99h.01M19 7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.414-1.414A1 1 0 0012.586 3h-1.172a1 1 0 00-.707.293L9.293 4.707A1 1 0 018.586 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7z" /></svg>
+        </div>
+        <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Comm. Paid</div>
+      </div>
+      <div class="mt-2.5 text-2xl font-bold font-mono text-amber-500">
+        {{ commissionPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+      </div>
+    </div>
+
+    <div class="stat-card">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg flex items-center justify-center" :class="netPL >= 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'">
+          <svg class="w-3.5 h-3.5" :class="netPL >= 0 ? 'text-emerald-400' : 'text-rose-400'" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        </div>
+        <div class="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Net P/L</div>
+      </div>
+      <div class="mt-2.5 text-2xl font-bold font-mono" :class="netPL >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+        {{ netPL >= 0 ? '+' : '' }}{{ netPL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
       </div>
     </div>
 

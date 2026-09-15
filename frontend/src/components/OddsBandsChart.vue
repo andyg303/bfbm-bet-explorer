@@ -215,7 +215,7 @@ function createRoiChart() {
             afterLabel: function(context) {
               const d = oddsBandsData.value[context.dataIndex]
               if (!d) return ''
-              return `P&L: £${d.total_pl.toFixed(2)}\nStaked: £${d.total_staked.toFixed(2)}\nBets: ${d.num_bets}`
+              return `Net P&L: £${d.total_pl.toFixed(2)}\nStaked: £${d.total_staked.toFixed(2)}\nBets: ${d.num_bets}`
             }
           }
         }

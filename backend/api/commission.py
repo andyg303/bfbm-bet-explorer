@@ -65,24 +65,48 @@ def net_profit_loss_for_bet(bet: Bet) -> float | None:
     return float(bet.profit_loss or 0) - float(bet.commission_paid or 0)
 
 
-def _looks_like_legacy_net_group(group_bets: list[Bet], rate: float) -> bool:
-    """Detect rows where profit_loss was previously stored after commission."""
-    if rate <= 0:
-        return False
+def _expected_gross_profit_loss(bet: Bet) -> float | None:
+    """Return stake/odds gross P/L when it is unambiguous."""
+    if bet.profit_loss is None or bet.matched_amount is None:
+        return None
 
-    stored_commission = sum(float(bet.commission_paid or 0) for bet in group_bets)
-    if stored_commission <= 0:
-        return False
+    bet_type = (bet.bet_type or '').upper()
+    stake = float(bet.matched_amount or 0)
+    current_pl = float(bet.profit_loss or 0)
 
-    current_pl = sum(float(bet.profit_loss or 0) for bet in group_bets if bet.profit_loss is not None)
-    restored_pl = current_pl + stored_commission
+    if bet_type == 'BACK':
+        if current_pl < 0:
+            return round(-stake, 6)
+        if not bet.avg_price_matched or bet.avg_price_matched <= 1:
+            return None
+        return round((float(bet.avg_price_matched) - 1) * stake, 6)
 
-    expected_from_current = round(current_pl * rate, 4) if current_pl > 0 else 0.0
-    expected_from_restored = round(restored_pl * rate, 4) if restored_pl > 0 else 0.0
+    if bet_type == 'LAY':
+        if current_pl >= 0:
+            return round(stake, 6)
+        if bet.lay_liability is not None:
+            return round(-float(bet.lay_liability or 0), 6)
+        if not bet.avg_price_matched or bet.avg_price_matched <= 1:
+            return None
+        return round(-(float(bet.avg_price_matched) - 1) * stake, 6)
 
-    current_delta = abs(stored_commission - expected_from_current)
-    restored_delta = abs(stored_commission - expected_from_restored)
-    return restored_delta + 0.0001 < current_delta
+    return None
+
+
+def _normalise_gross_profit_loss(bet: Bet) -> None:
+    """Repair old net-stored or accidentally inflated P/L rows before recalculation."""
+    expected = _expected_gross_profit_loss(bet)
+    if expected is None or bet.profit_loss is None:
+        return
+
+    current = float(bet.profit_loss or 0)
+    commission = float(bet.commission_paid or 0)
+    candidates = (current, current + commission, current - commission)
+    best = min(candidates, key=lambda value: abs(value - expected))
+    tolerance = max(0.01, abs(expected) * 0.0001)
+
+    if abs(best - expected) <= tolerance and abs(current - expected) > 0.000001:
+        bet.profit_loss = expected
 
 
 def apply_commission_for_user(db: Session, user: User) -> int:
@@ -109,10 +133,8 @@ def apply_commission_for_user(db: Session, user: User) -> int:
 
     for group_bets in groups.values():
         rate = aus_nz_rate if any(is_aus_nz_bet(bet) for bet in group_bets) else global_rate
-        if _looks_like_legacy_net_group(group_bets, rate):
-            for bet in group_bets:
-                if bet.commission_paid and bet.profit_loss is not None:
-                    bet.profit_loss = round(bet.profit_loss + bet.commission_paid, 6)
+        for bet in group_bets:
+            _normalise_gross_profit_loss(bet)
 
         for bet in group_bets:
             bet.commission_paid = 0.0

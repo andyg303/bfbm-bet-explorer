@@ -38,7 +38,7 @@ function rowTotal(row: any): number {
     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
       <h2 class="text-sm font-semibold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
         <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-        Monthly P/L
+        Monthly Net P/L
       </h2>
       <button
         @click="showMonthlyPL = !showMonthlyPL"
@@ -47,7 +47,7 @@ function rowTotal(row: any): number {
         <svg class="w-3.5 h-3.5 transition-transform" :class="{ 'rotate-180': showMonthlyPL }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
         </svg>
-        {{ showMonthlyPL ? 'Hide Monthly P/L' : 'Show Monthly P/L' }}
+        {{ showMonthlyPL ? 'Hide Monthly Net P/L' : 'Show Monthly Net P/L' }}
       </button>
     </div>
 

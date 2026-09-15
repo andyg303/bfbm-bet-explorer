@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit, OddsCurvePoint, MonthlyPLResponse, ArchivedStrategy, MergeSuggestion, StrategyInfo } from '../services/api'
+import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit, OddsCurvePoint, MonthlyPLResponse, ArchivedStrategy, MergeSuggestion, StrategyInfo, StrategyGroup } from '../services/api'
 import * as api from '../services/api'
 
 type LoadingSection = 'filters' | 'summary' | 'strategies' | 'bets' | 'plGraph' | 'monthly' | 'oddsBands' | 'archive' | 'mergeSuggestions'
@@ -48,6 +48,10 @@ export const useBetStore = defineStore('bet', () => {
   const archivedStrategies = ref<ArchivedStrategy[]>([])
   const mergeSuggestions = ref<MergeSuggestion[]>([])
   const allStrategies = ref<StrategyInfo[]>([])
+  const starredStrategies = ref<Set<string>>(new Set())
+  const strategyGroups = ref<StrategyGroup[]>([])
+  // '' = no group filter | 'starred' | `group:<id>`
+  const strategyGroupFilter = ref('')
   const loading = ref(false)
   const loadingSections = ref<LoadingSections>(createLoadingSections())
   const error = ref<string | null>(null)
@@ -268,6 +272,116 @@ export const useBetStore = defineStore('bet', () => {
     }
   }
 
+  // ─── Strategy stars & groups ────────────────────────────────────────────
+
+  // Sentinel strategy name so an empty group/starred selection filters to
+  // zero strategies instead of behaving like "no filter".
+  const EMPTY_GROUP_SENTINEL = ' __no_strategies__'
+
+  function resolveGroupFilterStrategies(value?: string): string[] {
+    const v = value ?? strategyGroupFilter.value
+    if (v === 'starred') {
+      return Array.from(starredStrategies.value)
+    }
+    if (v.startsWith('group:')) {
+      const group = strategyGroups.value.find(g => g.id === Number(v.slice(6)))
+      return group ? [...group.strategies] : []
+    }
+    return []
+  }
+
+  function applyGroupFilter(value?: string) {
+    if (value !== undefined) {
+      strategyGroupFilter.value = value
+    }
+    const members = resolveGroupFilterStrategies()
+    filters.value = {
+      ...filters.value,
+      strategies: strategyGroupFilter.value
+        ? (members.length ? members : [EMPTY_GROUP_SENTINEL])
+        : [],
+    }
+  }
+
+  async function loadStrategyMeta() {
+    try {
+      const meta = await api.getStrategyMeta()
+      starredStrategies.value = new Set(meta.starred)
+      strategyGroups.value = meta.groups
+    } catch (e: any) {
+      error.value = e.message
+    }
+  }
+
+  async function toggleStarred(strategy: string) {
+    const previous = new Set(starredStrategies.value)
+    const next = new Set(previous)
+    const nowStarred = !next.has(strategy)
+    if (nowStarred) next.add(strategy)
+    else next.delete(strategy)
+    starredStrategies.value = next
+    try {
+      await api.setStrategyStarred(strategy, nowStarred)
+      if (strategyGroupFilter.value === 'starred') applyGroupFilter()
+    } catch (e: any) {
+      starredStrategies.value = previous
+      error.value = e.message
+    }
+  }
+
+  function upsertGroup(group: StrategyGroup) {
+    const idx = strategyGroups.value.findIndex(g => g.id === group.id)
+    if (idx >= 0) strategyGroups.value[idx] = group
+    else strategyGroups.value.push(group)
+    if (strategyGroupFilter.value === `group:${group.id}`) applyGroupFilter()
+  }
+
+  async function createGroup(name: string): Promise<StrategyGroup | undefined> {
+    try {
+      const group = await api.createStrategyGroup(name)
+      upsertGroup(group)
+      return group
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    }
+  }
+
+  async function addToGroup(groupId: number, strategies: string[]) {
+    try {
+      const group = await api.addStrategiesToGroup(groupId, strategies)
+      upsertGroup(group)
+      return group
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    }
+  }
+
+  async function removeFromGroup(groupId: number, strategies: string[]) {
+    try {
+      const group = await api.removeStrategiesFromGroup(groupId, strategies)
+      upsertGroup(group)
+      return group
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    }
+  }
+
+  async function deleteGroup(groupId: number) {
+    try {
+      await api.deleteStrategyGroup(groupId)
+      strategyGroups.value = strategyGroups.value.filter(g => g.id !== groupId)
+      if (strategyGroupFilter.value === `group:${groupId}`) {
+        applyGroupFilter('')
+      }
+    } catch (e: any) {
+      error.value = e.message
+      throw e
+    }
+  }
+
   async function mergeStrategies(sourceStrategies: string[], targetStrategy: string) {
     startLoading()
     try {
@@ -277,6 +391,8 @@ export const useBetStore = defineStore('bet', () => {
       await refreshAll()
       await loadAllStrategies()
       await loadMergeSuggestions()
+      await loadStrategyMeta()
+      if (strategyGroupFilter.value) applyGroupFilter()
       return result
     } catch (e: any) {
       error.value = e.message
@@ -327,6 +443,9 @@ export const useBetStore = defineStore('bet', () => {
     archivedStrategies,
     mergeSuggestions,
     allStrategies,
+    starredStrategies,
+    strategyGroups,
+    strategyGroupFilter,
     loading,
     loadingSections,
     error,
@@ -352,6 +471,13 @@ export const useBetStore = defineStore('bet', () => {
     migrateDeletedToArchived,
     loadMergeSuggestions,
     loadAllStrategies,
+    loadStrategyMeta,
+    toggleStarred,
+    createGroup,
+    addToGroup,
+    removeFromGroup,
+    deleteGroup,
+    applyGroupFilter,
     mergeStrategies,
     deleteMergeDuplicateBets,
     refreshAll,

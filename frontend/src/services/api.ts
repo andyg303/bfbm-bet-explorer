@@ -145,6 +145,9 @@ export interface StakingParams {
 export interface StrategyStats {
   strategy: string
   num_bets: number
+  gross_pl: number
+  commission_paid: number
+  net_pl: number
   total_pl: number
   roi: number
   yield_pct: number
@@ -430,6 +433,9 @@ export const deleteBet = async (id: number): Promise<void> => {
 export interface ArchivedStrategy {
   strategy: string
   num_bets: number
+  gross_pl: number
+  commission_paid: number
+  net_pl: number
   total_pl: number
   total_staked: number
   roi: number
@@ -483,6 +489,9 @@ export const migrateDeletedToArchived = async (): Promise<{
 export interface StrategyInfo {
   strategy: string
   num_bets: number
+  gross_pl: number
+  commission_paid: number
+  net_pl: number
   total_pl: number
   first_bet: string | null
   last_bet: string | null
@@ -571,6 +580,59 @@ export const deleteMergeDuplicateBets = async (
 export const getAllStrategies = async (): Promise<StrategyInfo[]> => {
   const response = await api.get('/strategies/all')
   return response.data
+}
+
+// ─── Strategy stars & groups ─────────────────────────────────────────────────
+
+export interface StrategyGroup {
+  id: number
+  name: string
+  strategies: string[]
+}
+
+export interface StrategyMeta {
+  starred: string[]
+  groups: StrategyGroup[]
+}
+
+export const getStrategyMeta = async (): Promise<StrategyMeta> => {
+  const response = await api.get('/strategies/meta')
+  return response.data
+}
+
+export const setStrategyStarred = async (
+  strategy: string,
+  starred: boolean,
+): Promise<{ ok: boolean; strategy: string; starred: boolean }> => {
+  const response = await api.post('/strategies/star', { strategy, starred })
+  return response.data
+}
+
+export const createStrategyGroup = async (name: string): Promise<StrategyGroup> => {
+  const response = await api.post('/strategy-groups', { name })
+  return response.data
+}
+
+export const addStrategiesToGroup = async (
+  groupId: number,
+  strategies: string[],
+): Promise<StrategyGroup> => {
+  const response = await api.post(`/strategy-groups/${groupId}/members`, { strategies })
+  return response.data
+}
+
+export const removeStrategiesFromGroup = async (
+  groupId: number,
+  strategies: string[],
+): Promise<StrategyGroup> => {
+  const response = await api.delete(`/strategy-groups/${groupId}/members`, {
+    data: { strategies },
+  })
+  return response.data
+}
+
+export const deleteStrategyGroup = async (groupId: number): Promise<void> => {
+  await api.delete(`/strategy-groups/${groupId}`)
 }
 
 // ─── Referral endpoints ─────────────────────────────────────────────────────

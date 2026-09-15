@@ -20,6 +20,11 @@ const showMetricsHelp = ref(false)
 const showComparison = ref(false)
 const showStrategyList = ref(true)
 const comparisonSection = ref<HTMLElement | null>(null)
+const showGroupMenu = ref(false)
+const newGroupName = ref('')
+const groupActionLoading = ref(false)
+const groupActionResult = ref<{ type: 'success' | 'error'; message: string } | null>(null)
+let groupActionResultTimer: ReturnType<typeof setTimeout> | null = null
 
 const strategyFilters = ref({
   nameSearch: '',
@@ -122,6 +127,14 @@ function sort(key: keyof StrategyStats) {
   }
 }
 
+function formatMoney(value: number | null | undefined) {
+  return (value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function valueClass(value: number | null | undefined) {
+  return (value ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+}
+
 function toggleStrategy(strategy: string) {
   if (selectedStrategies.value.has(strategy)) {
     selectedStrategies.value.delete(strategy)
@@ -139,6 +152,7 @@ function toggleAll() {
 }
 
 function applySelection() {
+  betStore.strategyGroupFilter = ''
   betStore.filters.strategies = Array.from(selectedStrategies.value)
 }
 
@@ -156,6 +170,7 @@ function clearSelection() {
     base_stake: 10,
     deduplicate: false,
   }
+  betStore.strategyGroupFilter = ''
   betStore.filters.strategies = []
   betStore.refreshAll()
 }
@@ -178,6 +193,61 @@ function clearFilters() {
     maxWinRate: null,
     minBspFill: null,
     maxBspFill: null
+  }
+  if (betStore.strategyGroupFilter) {
+    betStore.applyGroupFilter('')
+  }
+}
+
+function isStarred(strategy: string) {
+  return betStore.starredStrategies.has(strategy)
+}
+
+function toggleStar(strategy: string) {
+  if (auth.isImpersonating) return
+  betStore.toggleStarred(strategy)
+}
+
+function showGroupActionResult(type: 'success' | 'error', message: string) {
+  groupActionResult.value = { type, message }
+  if (groupActionResultTimer) clearTimeout(groupActionResultTimer)
+  groupActionResultTimer = setTimeout(() => {
+    groupActionResult.value = null
+  }, 4000)
+}
+
+async function addSelectionToGroup(groupId: number) {
+  if (auth.isImpersonating) return
+  groupActionLoading.value = true
+  try {
+    const group = await betStore.addToGroup(groupId, Array.from(selectedStrategies.value))
+    showGroupActionResult('success', `Added ${selectedStrategies.value.size} strateg${selectedStrategies.value.size === 1 ? 'y' : 'ies'} to "${group.name}"`)
+    showGroupMenu.value = false
+    newGroupName.value = ''
+  } catch {
+    showGroupActionResult('error', betStore.error || 'Failed to update group')
+  } finally {
+    groupActionLoading.value = false
+  }
+}
+
+async function createGroupAndAddSelection() {
+  if (auth.isImpersonating) return
+  const name = newGroupName.value.trim()
+  if (!name) return
+  groupActionLoading.value = true
+  try {
+    const group = await betStore.createGroup(name)
+    if (group) {
+      await betStore.addToGroup(group.id, Array.from(selectedStrategies.value))
+      showGroupActionResult('success', `Added ${selectedStrategies.value.size} strateg${selectedStrategies.value.size === 1 ? 'y' : 'ies'} to "${group.name}"`)
+      showGroupMenu.value = false
+      newGroupName.value = ''
+    }
+  } catch {
+    showGroupActionResult('error', betStore.error || 'Failed to create group')
+  } finally {
+    groupActionLoading.value = false
   }
 }
 
@@ -227,6 +297,56 @@ watch(selectedStrategies, () => {
               </svg>
               Compare ({{ selectedStrategies.size }})
             </button>
+            <div v-if="!auth.isImpersonating" class="relative">
+              <button
+                @click="showGroupMenu = !showGroupMenu"
+                :disabled="selectedStrategies.size < 2"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-500 dark:text-violet-400 bg-violet-500/10 border border-violet-500/20 hover:bg-violet-500/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-all"
+                title="Add selected strategies to a group"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Add to Group ({{ selectedStrategies.size }})
+              </button>
+              <Transition enter-active-class="transition ease-out duration-100" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100" leave-active-class="transition ease-in duration-75" leave-from-class="opacity-100 scale-100" leave-to-class="opacity-0 scale-95">
+                <div v-if="showGroupMenu" class="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-[#111827] border border-gray-200 dark:border-gray-800 shadow-xl z-50 overflow-hidden">
+                  <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+                    <p class="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Add {{ selectedStrategies.size }} to group</p>
+                  </div>
+                  <div v-if="betStore.strategyGroups.length" class="max-h-44 overflow-y-auto py-1">
+                    <button
+                      v-for="group in betStore.strategyGroups"
+                      :key="group.id"
+                      @click="addSelectionToGroup(group.id)"
+                      :disabled="groupActionLoading"
+                      class="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center justify-between gap-2 transition-colors disabled:opacity-50"
+                    >
+                      <span class="truncate">{{ group.name }}</span>
+                      <span class="text-[10px] text-gray-400 font-mono">{{ group.strategies.length }}</span>
+                    </button>
+                  </div>
+                  <p v-else class="px-3 py-2 text-xs text-gray-400">No groups yet</p>
+                  <div class="border-t border-gray-100 dark:border-gray-800 p-2 flex gap-1.5">
+                    <input
+                      v-model="newGroupName"
+                      @keyup.enter="createGroupAndAddSelection"
+                      type="text"
+                      placeholder="New group name…"
+                      maxlength="100"
+                      class="input-field !py-1 !text-xs flex-1 min-w-0"
+                    >
+                    <button
+                      @click="createGroupAndAddSelection"
+                      :disabled="!newGroupName.trim() || groupActionLoading"
+                      class="px-2.5 py-1 text-xs font-medium text-white bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
+                    >
+                      Create
+                    </button>
+                  </div>
+                </div>
+              </Transition>
+            </div>
             <button
               v-if="!auth.isImpersonating"
               @click="showArchiveDialog = true"
@@ -254,7 +374,17 @@ watch(selectedStrategies, () => {
           </div>
         </div>
         <StrategyFilters v-model="strategyFilters" @clear="clearFilters" />
+
+        <!-- Group action feedback toast -->
+        <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 -translate-y-2">
+          <div v-if="groupActionResult" class="mt-3 p-2.5 rounded-lg text-xs font-medium" :class="groupActionResult.type === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 dark:text-emerald-400' : 'bg-rose-500/10 border border-rose-500/20 text-rose-500 dark:text-rose-400'">
+            {{ groupActionResult.message }}
+          </div>
+        </Transition>
       </div>
+
+      <!-- Click-outside backdrop for the Add to Group menu -->
+      <div v-if="showGroupMenu" class="fixed inset-0 z-40" @click="showGroupMenu = false" />
 
       <!-- Strategy list controls -->
       <div class="border-t border-gray-200 dark:border-gray-800/60">
@@ -311,14 +441,25 @@ watch(selectedStrategies, () => {
                 class="rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
               >
             </th>
+            <th class="!w-10 !px-2" title="Starred">
+              <svg class="w-3.5 h-3.5 mx-auto text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+              </svg>
+            </th>
             <th @click="sort('strategy')" class="cursor-pointer hover:text-teal-400 transition-colors">
               Strategy <span v-if="sortKey === 'strategy'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
             </th>
             <th @click="sort('num_bets')" class="cursor-pointer hover:text-teal-400 transition-colors">
               Bets <span v-if="sortKey === 'num_bets'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
             </th>
+            <th @click="sort('gross_pl')" class="cursor-pointer hover:text-teal-400 transition-colors">
+              Gross P/L <span v-if="sortKey === 'gross_pl'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+            </th>
+            <th @click="sort('commission_paid')" class="cursor-pointer hover:text-teal-400 transition-colors">
+              Comm. Paid <span v-if="sortKey === 'commission_paid'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+            </th>
             <th @click="sort('total_pl')" class="cursor-pointer hover:text-teal-400 transition-colors">
-              P/L <span v-if="sortKey === 'total_pl'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+              Net P/L <span v-if="sortKey === 'total_pl'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
             </th>
             <th @click="sort('roi')" class="cursor-pointer hover:text-teal-400 transition-colors" title="Profit ÷ actual risk (BACK: stake; LAY: liability). Click the (i) icon above for examples.">
               ROI % <span v-if="sortKey === 'roi'" class="text-teal-400">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
@@ -360,10 +501,29 @@ watch(selectedStrategies, () => {
                 class="rounded border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-white/5 text-teal-500 focus:ring-teal-500/30 focus:ring-offset-0"
               >
             </td>
+            <td class="!px-2">
+              <button
+                @click="toggleStar(stat.strategy)"
+                :disabled="auth.isImpersonating"
+                :title="isStarred(stat.strategy) ? 'Remove star' : 'Star strategy'"
+                class="p-0.5 rounded transition-colors disabled:cursor-default"
+                :class="isStarred(stat.strategy) ? 'text-amber-400 hover:text-amber-300' : 'text-gray-300 dark:text-gray-600 hover:text-amber-400'"
+              >
+                <svg class="w-4 h-4" :fill="isStarred(stat.strategy) ? 'currentColor' : 'none'" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                </svg>
+              </button>
+            </td>
             <td class="strategy-cell font-medium text-gray-900 dark:text-white">{{ stat.strategy }}</td>
             <td class="font-mono">{{ stat.num_bets }}</td>
-            <td class="font-mono font-medium" :class="stat.total_pl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
-              £{{ stat.total_pl.toLocaleString() }}
+            <td class="font-mono font-medium" :class="valueClass(stat.gross_pl ?? stat.total_pl)">
+              £{{ formatMoney(stat.gross_pl ?? stat.total_pl) }}
+            </td>
+            <td class="font-mono text-amber-500 dark:text-amber-400">
+              £{{ formatMoney(stat.commission_paid) }}
+            </td>
+            <td class="font-mono font-medium" :class="valueClass(stat.net_pl ?? stat.total_pl)">
+              £{{ formatMoney(stat.net_pl ?? stat.total_pl) }}
             </td>
             <td class="font-mono" :class="stat.roi >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'">
               {{ stat.roi }}%
@@ -387,7 +547,7 @@ watch(selectedStrategies, () => {
             </td>
           </tr>
           <tr v-if="!stats || stats.length === 0">
-            <td colspan="14" class="!py-12 text-center text-sm text-gray-500">No strategies match the filters</td>
+            <td colspan="17" class="!py-12 text-center text-sm text-gray-500">No strategies match the filters</td>
           </tr>
         </tbody>
       </table>

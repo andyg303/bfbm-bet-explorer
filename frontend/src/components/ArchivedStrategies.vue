@@ -72,6 +72,14 @@ function formatDate(dateStr: string | null) {
     year: 'numeric',
   })
 }
+
+function formatMoney(value: number | null | undefined) {
+  return (value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function valueClass(value: number | null | undefined) {
+  return (value ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+}
 </script>
 
 <template>
@@ -137,7 +145,9 @@ function formatDate(dateStr: string | null) {
               </th>
               <th>Strategy</th>
               <th>Bets</th>
-              <th>P/L</th>
+              <th>Gross P/L</th>
+              <th>Comm. Paid</th>
+              <th>Net P/L</th>
               <th>ROI</th>
               <th>Win Rate</th>
               <th>Avg Odds</th>
@@ -160,8 +170,14 @@ function formatDate(dateStr: string | null) {
               </td>
               <td class="font-medium text-gray-900 dark:text-white">{{ stat.strategy }}</td>
               <td class="font-mono text-gray-400">{{ stat.num_bets.toLocaleString() }}</td>
-              <td class="font-mono font-medium" :class="stat.total_pl >= 0 ? 'text-emerald-400' : 'text-rose-400'">
-                £{{ stat.total_pl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+              <td class="font-mono font-medium" :class="valueClass(stat.gross_pl ?? stat.total_pl)">
+                £{{ formatMoney(stat.gross_pl ?? stat.total_pl) }}
+              </td>
+              <td class="font-mono text-amber-400">
+                £{{ formatMoney(stat.commission_paid) }}
+              </td>
+              <td class="font-mono font-medium" :class="valueClass(stat.net_pl ?? stat.total_pl)">
+                £{{ formatMoney(stat.net_pl ?? stat.total_pl) }}
               </td>
               <td class="font-mono" :class="stat.roi >= 0 ? 'text-emerald-400' : 'text-rose-400'">
                 {{ stat.roi.toFixed(2) }}%
@@ -172,7 +188,7 @@ function formatDate(dateStr: string | null) {
               <td class="font-mono text-gray-500 text-xs">{{ formatDate(stat.last_bet) }}</td>
             </tr>
             <tr v-if="filteredStrategies.length === 0">
-              <td :colspan="auth.isImpersonating ? 8 : 9" class="!py-12 text-center">
+              <td :colspan="auth.isImpersonating ? 10 : 11" class="!py-12 text-center">
                 <div class="flex flex-col items-center gap-2">
                   <svg class="w-12 h-12 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />

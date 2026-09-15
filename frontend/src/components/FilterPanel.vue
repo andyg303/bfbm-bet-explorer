@@ -31,6 +31,7 @@ function clearFilters() {
     country_codes: [],
     events: [],
   }
+  betStore.strategyGroupFilter = ''
 }
 </script>
 
@@ -83,7 +84,7 @@ function clearFilters() {
       </div>
 
       <div>
-        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">P/L Range (£)</label>
+        <label class="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1.5">Net P/L Range (£)</label>
         <div class="grid grid-cols-2 gap-2">
           <input v-model.number="betStore.filters.min_pl" type="number" step="0.01" placeholder="Min" class="input-field text-xs">
           <input v-model.number="betStore.filters.max_pl" type="number" step="0.01" placeholder="Max" class="input-field text-xs">

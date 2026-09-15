@@ -212,6 +212,22 @@ class CommissionReportingTest(unittest.TestCase):
                 is_archived=False,
                 is_deleted=False,
             ),
+            Bet(
+                id=13,
+                user_id=1,
+                bet_id="inflated-gross",
+                strategy="Inflated Gross",
+                bet_type="BACK",
+                matched_amount=1,
+                avg_price_matched=3.4,
+                profit_loss=2.449,
+                commission_paid=0.049,
+                start_time=datetime(2026, 6, 6, 12, 0),
+                placed_date=datetime(2026, 6, 6, 11, 0),
+                description="Market Eight\\Runner",
+                is_archived=False,
+                is_deleted=False,
+            ),
         ])
         self.db.commit()
 
@@ -219,19 +235,31 @@ class CommissionReportingTest(unittest.TestCase):
 
         already_gross = self.db.query(Bet).filter(Bet.bet_id == "already-gross").one()
         legacy_net = self.db.query(Bet).filter(Bet.bet_id == "legacy-net").one()
+        inflated_gross = self.db.query(Bet).filter(Bet.bet_id == "inflated-gross").one()
         self.assertEqual(already_gross.profit_loss, 10)
         self.assertEqual(already_gross.commission_paid, 0.2)
         self.assertEqual(legacy_net.profit_loss, 10)
         self.assertEqual(legacy_net.commission_paid, 0.2)
+        self.assertEqual(inflated_gross.profit_loss, 2.4)
+        self.assertEqual(inflated_gross.commission_paid, 0.048)
 
     def test_dashboard_reports_use_net_pl_after_commission(self):
         f = filters()
 
         strategy_stats = {row["strategy"]: row for row in get_strategy_stats(f, self.user, self.db)}
+        self.assertEqual(strategy_stats["Gross Strategy"]["gross_pl"], 0)
+        self.assertEqual(strategy_stats["Gross Strategy"]["commission_paid"], 0.2)
+        self.assertEqual(strategy_stats["Gross Strategy"]["net_pl"], -0.2)
         self.assertEqual(strategy_stats["Gross Strategy"]["total_pl"], -0.2)
+        self.assertEqual(strategy_stats["Other Strategy"]["gross_pl"], 5)
+        self.assertEqual(strategy_stats["Other Strategy"]["commission_paid"], 0.1)
+        self.assertEqual(strategy_stats["Other Strategy"]["net_pl"], 4.9)
         self.assertEqual(strategy_stats["Other Strategy"]["total_pl"], 4.9)
 
         summary = get_summary_stats(f, self.user, self.db)
+        self.assertEqual(summary["gross_pl"], 5)
+        self.assertEqual(summary["commission_paid"], 0.3)
+        self.assertEqual(summary["net_pl"], 4.7)
         self.assertEqual(summary["total_pl"], 4.7)
         self.assertEqual(summary["roi"], 15.67)
 
@@ -262,9 +290,15 @@ class CommissionReportingTest(unittest.TestCase):
 
     def test_strategy_manager_archive_and_comparison_stats_use_net_pl(self):
         archived = {row["strategy"]: row for row in get_archived_strategies(self.user, self.db)}
+        self.assertEqual(archived["Archived Strategy"]["gross_pl"], 10)
+        self.assertEqual(archived["Archived Strategy"]["commission_paid"], 0.2)
+        self.assertEqual(archived["Archived Strategy"]["net_pl"], 9.8)
         self.assertEqual(archived["Archived Strategy"]["total_pl"], 9.8)
 
         all_strategies = {row["strategy"]: row for row in get_all_strategies(self.user, self.db)}
+        self.assertEqual(all_strategies["Gross Strategy"]["gross_pl"], 0)
+        self.assertEqual(all_strategies["Gross Strategy"]["commission_paid"], 0.2)
+        self.assertEqual(all_strategies["Gross Strategy"]["net_pl"], -0.2)
         self.assertEqual(all_strategies["Gross Strategy"]["total_pl"], -0.2)
         self.assertEqual(all_strategies["Other Strategy"]["total_pl"], 4.9)
         self.assertEqual(all_strategies["Archived Strategy"]["total_pl"], 9.8)
@@ -278,6 +312,9 @@ class CommissionReportingTest(unittest.TestCase):
             self.user,
         )
         by_strategy = {row["strategy"]: row for row in comparison["strategies"]}
+        self.assertEqual(by_strategy["Gross Strategy"]["stats"]["gross_pl"], 0)
+        self.assertEqual(by_strategy["Gross Strategy"]["stats"]["commission_paid"], 0.2)
+        self.assertEqual(by_strategy["Gross Strategy"]["stats"]["net_pl"], -0.2)
         self.assertEqual(by_strategy["Gross Strategy"]["stats"]["total_pl"], -0.2)
         self.assertEqual(by_strategy["Other Strategy"]["stats"]["total_pl"], 4.9)
 

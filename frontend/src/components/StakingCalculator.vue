@@ -92,7 +92,7 @@ const recalcStats = computed(() => betStore.recalculatedStats?.summary || null)
 
       <div v-if="recalcStats" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800/60 space-y-2.5">
         <div class="flex justify-between text-xs">
-          <span class="text-gray-500">New P/L:</span>
+          <span class="text-gray-500">New Net P/L:</span>
           <span class="font-bold font-mono" :class="(recalcStats.total_pl || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">£{{ (recalcStats.total_pl || 0).toLocaleString() }}</span>
         </div>
         <div class="flex justify-between text-xs">

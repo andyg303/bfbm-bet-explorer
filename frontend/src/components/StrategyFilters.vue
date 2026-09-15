@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useBetStore } from '../stores/betStore'
+
+const betStore = useBetStore()
 
 const props = defineProps<{
   modelValue: {
@@ -25,6 +28,11 @@ const emit = defineEmits<{
 const localFilters = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value)
+})
+
+const groupFilter = computed({
+  get: () => betStore.strategyGroupFilter,
+  set: (value: string) => betStore.applyGroupFilter(value),
 })
 
 function clearFilters() {
@@ -53,6 +61,22 @@ function clearFilters() {
         >
       </div>
 
+      <!-- Star / Group filter -->
+      <div class="col-span-2">
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Group</label>
+        <select v-model="groupFilter" class="input-field !py-1 !text-xs">
+          <option value="">All strategies</option>
+          <option value="starred">★ Starred ({{ betStore.starredStrategies.size }})</option>
+          <option
+            v-for="group in betStore.strategyGroups"
+            :key="group.id"
+            :value="`group:${group.id}`"
+          >
+            {{ group.name }} ({{ group.strategies.length }})
+          </option>
+        </select>
+      </div>
+
       <!-- Bets Range -->
       <div>
         <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Min Bets</label>
@@ -75,7 +99,7 @@ function clearFilters() {
 
       <!-- P/L Range -->
       <div>
-        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Min P/L (£)</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Min Net P/L (£)</label>
         <input 
           v-model.number="localFilters.minPL" 
           type="number" 
@@ -85,7 +109,7 @@ function clearFilters() {
         >
       </div>
       <div>
-        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Max P/L (£)</label>
+        <label class="block text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-1">Max Net P/L (£)</label>
         <input 
           v-model.number="localFilters.maxPL" 
           type="number" 

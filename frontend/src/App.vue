@@ -272,6 +272,7 @@ function loadDashboardSectionsAfterFirstPaint() {
       betStore.loadOddsBandsData(),
       betStore.loadArchivedStrategies(),
       betStore.loadMergeSuggestions(),
+      betStore.loadStrategyMeta(),
     ])
   }, 0)
 }

@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from database import Bet
+from database import Bet, StrategyFavorite, StrategyGroup, StrategyGroupMember
 
 
 def delete_archived_strategy_bets(db: Session, user_id: int, strategies: list[str]) -> int:
@@ -105,6 +105,76 @@ def _duplicate_bet_dict(bet: Bet, original_strategy_by_id: dict[int, str] | None
         "bet_type": bet.bet_type,
         "status": bet.status,
     }
+
+
+def rename_strategies_in_metadata(
+    db: Session,
+    user_id: int,
+    source_strategies: list[str],
+    target: str,
+) -> None:
+    """Re-point star + group membership rows after a strategy rename/merge.
+
+    If the target is already present in the same favourite list or group the
+    source row is dropped, keeping the per-user/per-group uniqueness intact.
+    """
+    sources = [s for s in set(source_strategies) if s and s != target]
+    if not sources:
+        return
+
+    target_starred = (
+        db.query(StrategyFavorite)
+        .filter(
+            StrategyFavorite.user_id == user_id,
+            StrategyFavorite.strategy == target,
+        )
+        .first()
+        is not None
+    )
+    favorites = (
+        db.query(StrategyFavorite)
+        .filter(
+            StrategyFavorite.user_id == user_id,
+            StrategyFavorite.strategy.in_(sources),
+        )
+        .all()
+    )
+    for fav in favorites:
+        if target_starred:
+            db.delete(fav)
+        else:
+            fav.strategy = target
+            target_starred = True
+
+    group_ids = [
+        row.id
+        for row in db.query(StrategyGroup.id).filter(StrategyGroup.user_id == user_id)
+    ]
+    if not group_ids:
+        return
+
+    members = (
+        db.query(StrategyGroupMember)
+        .filter(
+            StrategyGroupMember.group_id.in_(group_ids),
+            StrategyGroupMember.strategy.in_(sources + [target]),
+        )
+        .all()
+    )
+    members_by_group: dict[int, list[StrategyGroupMember]] = defaultdict(list)
+    for member in members:
+        members_by_group[member.group_id].append(member)
+
+    for rows in members_by_group.values():
+        has_target = any(m.strategy == target for m in rows)
+        for member in rows:
+            if member.strategy == target:
+                continue
+            if has_target:
+                db.delete(member)
+            else:
+                member.strategy = target
+                has_target = True
 
 
 def build_strategy_duplicate_groups(

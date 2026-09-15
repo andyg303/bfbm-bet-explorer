@@ -53,7 +53,7 @@ function createProfitChart() {
       labels: data.map(d => d.odds),
       datasets: [
         {
-          label: 'Cumulative P&L',
+          label: 'Cumulative Net P&L',
           data: data.map(d => d.cum_pl),
           borderColor: isDark.value ? '#d1d5db' : '#374151',
           backgroundColor: 'transparent',

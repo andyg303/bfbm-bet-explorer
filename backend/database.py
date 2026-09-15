@@ -152,6 +152,53 @@ class IngestionLog(Base):
     user = relationship("User")
 
 
+class StrategyFavorite(Base):
+    """Per-user starred strategies (Gmail-style favourites)."""
+    __tablename__ = "strategy_favorites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    strategy = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        Index('ix_strategy_favorites_user_strategy', 'user_id', 'strategy', unique=True),
+    )
+
+
+class StrategyGroup(Base):
+    """Named, per-user collections of strategies."""
+    __tablename__ = "strategy_groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    members = relationship("StrategyGroupMember", back_populates="group",
+                           cascade="all, delete-orphan", lazy="selectin")
+
+    __table_args__ = (
+        Index('ix_strategy_groups_user_name', 'user_id', 'name', unique=True),
+    )
+
+
+class StrategyGroupMember(Base):
+    """Membership of a strategy (by name) in a strategy group."""
+    __tablename__ = "strategy_group_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("strategy_groups.id", ondelete="CASCADE"),
+                      nullable=False, index=True)
+    strategy = Column(String, nullable=False)
+
+    group = relationship("StrategyGroup", back_populates="members")
+
+    __table_args__ = (
+        Index('ix_strategy_group_members_unique', 'group_id', 'strategy', unique=True),
+    )
+
+
 class AutomationToken(Base):
     """Revocable API tokens for VPS/desktop upload helpers."""
     __tablename__ = "automation_tokens"

@@ -240,6 +240,11 @@ function formatSignedMoney(value: number | null | undefined) {
   return `${value >= 0 ? '+' : '-'}£${abs.toFixed(2)}`
 }
 
+function formatMoney(value: number | null | undefined) {
+  if (value === null || value === undefined) return ''
+  return `£${value.toFixed(2)}`
+}
+
 function formatPercent(value: number | null | undefined) {
   if (value === null || value === undefined) return ''
   return `${value.toFixed(2)}%`
@@ -303,7 +308,9 @@ function valueClass(value: number | null | undefined) {
               <th class="text-center">Avg Odds</th>
               <th class="text-center">Selections</th>
               <th class="text-center">Win Rate</th>
-              <th class="text-center">P/L</th>
+              <th class="text-center">Gross P/L</th>
+              <th class="text-center">Comm. Paid</th>
+              <th class="text-center">Net P/L</th>
               <th class="text-center">ROI</th>
               <th class="text-center">Reverse ROI</th>
             </tr>
@@ -314,6 +321,8 @@ function valueClass(value: number | null | undefined) {
               <td class="text-center font-mono">{{ row.avg_odds.toFixed(2) }}</td>
               <td class="text-center font-mono">{{ row.num_bets.toLocaleString() }}</td>
               <td class="text-center font-mono">{{ formatPercent(row.win_rate) }}</td>
+              <td class="text-center font-mono" :class="valueClass(row.gross_pl)">{{ formatSignedMoney(row.gross_pl) }}</td>
+              <td class="text-center font-mono text-amber-500">{{ formatMoney(row.commission_paid) }}</td>
               <td class="text-center font-mono" :class="valueClass(row.total_pl)">{{ formatSignedMoney(row.total_pl) }}</td>
               <td class="text-center font-mono" :class="valueClass(row.roi)">{{ formatPercent(row.roi) }}</td>
               <td class="text-center font-mono" :class="valueClass(row.yield_pct)">{{ formatPercent(row.yield_pct) }}</td>
