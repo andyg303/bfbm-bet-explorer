@@ -11,12 +11,13 @@
 --     pg_dump -U "$DB_USER" -d "$DB_NAME" --schema-only --no-owner --no-privileges \
 --     | sed -E '/^\\(restrict|unrestrict) /d' > schema.sql
 --
+--
 -- PostgreSQL database dump
 --
 
 
--- Dumped from database version 16.11
--- Dumped by pg_dump version 16.11
+-- Dumped from database version 16.13
+-- Dumped by pg_dump version 16.13
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -34,11 +35,48 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: automation_tokens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.automation_tokens (
+    id integer NOT NULL,
+    user_id integer NOT NULL,
+    name character varying NOT NULL,
+    token_hash character varying NOT NULL,
+    token_prefix character varying NOT NULL,
+    created_at timestamp without time zone NOT NULL,
+    last_used_at timestamp without time zone,
+    revoked_at timestamp without time zone
+);
+
+
+--
+-- Name: automation_tokens_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.automation_tokens_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: automation_tokens_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.automation_tokens_id_seq OWNED BY public.automation_tokens.id;
+
+
+--
 -- Name: bets; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.bets (
     id integer NOT NULL,
+    user_id integer,
     bet_id character varying,
     event character varying,
     country_code character varying,
@@ -68,13 +106,13 @@ CREATE TABLE public.bets (
     bsp_diff_absolute double precision,
     bsp_diff_percentage double precision,
     bsp_diff_probability double precision,
-    is_deleted boolean DEFAULT false,
-    is_archived boolean DEFAULT false,
-    user_id integer,
+    is_deleted boolean,
+    is_archived boolean,
     market_name character varying,
     market_id character varying,
     start_time timestamp without time zone,
-    strategy_id character varying
+    strategy_id character varying,
+    commission_paid double precision DEFAULT 0.0
 );
 
 
@@ -118,42 +156,6 @@ CREATE TABLE public.ingestion_logs (
 
 
 --
--- Name: automation_tokens; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.automation_tokens (
-    id integer NOT NULL,
-    user_id integer NOT NULL,
-    name character varying NOT NULL,
-    token_hash character varying NOT NULL,
-    token_prefix character varying NOT NULL,
-    created_at timestamp without time zone NOT NULL,
-    last_used_at timestamp without time zone,
-    revoked_at timestamp without time zone
-);
-
-
---
--- Name: automation_tokens_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.automation_tokens_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: automation_tokens_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.automation_tokens_id_seq OWNED BY public.automation_tokens.id;
-
-
---
 -- Name: ingestion_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -174,6 +176,101 @@ ALTER SEQUENCE public.ingestion_logs_id_seq OWNED BY public.ingestion_logs.id;
 
 
 --
+-- Name: strategy_favorites; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.strategy_favorites (
+    id integer NOT NULL,
+    user_id integer NOT NULL,
+    strategy character varying NOT NULL,
+    created_at timestamp without time zone NOT NULL
+);
+
+
+--
+-- Name: strategy_favorites_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.strategy_favorites_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: strategy_favorites_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.strategy_favorites_id_seq OWNED BY public.strategy_favorites.id;
+
+
+--
+-- Name: strategy_group_members; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.strategy_group_members (
+    id integer NOT NULL,
+    group_id integer NOT NULL,
+    strategy character varying NOT NULL
+);
+
+
+--
+-- Name: strategy_group_members_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.strategy_group_members_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: strategy_group_members_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.strategy_group_members_id_seq OWNED BY public.strategy_group_members.id;
+
+
+--
+-- Name: strategy_groups; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.strategy_groups (
+    id integer NOT NULL,
+    user_id integer NOT NULL,
+    name character varying NOT NULL,
+    created_at timestamp without time zone NOT NULL
+);
+
+
+--
+-- Name: strategy_groups_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.strategy_groups_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: strategy_groups_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.strategy_groups_id_seq OWNED BY public.strategy_groups.id;
+
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -187,7 +284,7 @@ CREATE TABLE public.users (
     updated_at timestamp without time zone,
     password_reset_token character varying,
     password_reset_expires timestamp without time zone,
-    subscription_status character varying DEFAULT 'inactive'::character varying NOT NULL,
+    subscription_status character varying NOT NULL,
     subscription_plan character varying,
     subscription_start timestamp without time zone,
     subscription_expires timestamp without time zone,
@@ -198,6 +295,8 @@ CREATE TABLE public.users (
     failed_login_attempts integer DEFAULT 0 NOT NULL,
     locked_until timestamp without time zone,
     password_reset_token_id character varying,
+    commission_rate double precision DEFAULT 2.0 NOT NULL,
+    commission_rate_aus_nz double precision DEFAULT 5.0 NOT NULL,
     referral_code character varying,
     referred_by_user_id integer,
     referral_rewarded_at timestamp without time zone,
@@ -230,6 +329,13 @@ ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
 
 
 --
+-- Name: automation_tokens id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.automation_tokens ALTER COLUMN id SET DEFAULT nextval('public.automation_tokens_id_seq'::regclass);
+
+
+--
 -- Name: bets id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -244,10 +350,24 @@ ALTER TABLE ONLY public.ingestion_logs ALTER COLUMN id SET DEFAULT nextval('publ
 
 
 --
--- Name: automation_tokens id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: strategy_favorites id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.automation_tokens ALTER COLUMN id SET DEFAULT nextval('public.automation_tokens_id_seq'::regclass);
+ALTER TABLE ONLY public.strategy_favorites ALTER COLUMN id SET DEFAULT nextval('public.strategy_favorites_id_seq'::regclass);
+
+
+--
+-- Name: strategy_group_members id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.strategy_group_members ALTER COLUMN id SET DEFAULT nextval('public.strategy_group_members_id_seq'::regclass);
+
+
+--
+-- Name: strategy_groups id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.strategy_groups ALTER COLUMN id SET DEFAULT nextval('public.strategy_groups_id_seq'::regclass);
 
 
 --
@@ -255,6 +375,14 @@ ALTER TABLE ONLY public.automation_tokens ALTER COLUMN id SET DEFAULT nextval('p
 --
 
 ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_id_seq'::regclass);
+
+
+--
+-- Name: automation_tokens automation_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.automation_tokens
+    ADD CONSTRAINT automation_tokens_pkey PRIMARY KEY (id);
 
 
 --
@@ -274,11 +402,27 @@ ALTER TABLE ONLY public.ingestion_logs
 
 
 --
--- Name: automation_tokens automation_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: strategy_favorites strategy_favorites_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.automation_tokens
-    ADD CONSTRAINT automation_tokens_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.strategy_favorites
+    ADD CONSTRAINT strategy_favorites_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: strategy_group_members strategy_group_members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.strategy_group_members
+    ADD CONSTRAINT strategy_group_members_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: strategy_groups strategy_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.strategy_groups
+    ADD CONSTRAINT strategy_groups_pkey PRIMARY KEY (id);
 
 
 --
@@ -329,6 +473,41 @@ CREATE UNIQUE INDEX idx_user_bet_id ON public.bets USING btree (user_id, bet_id)
 --
 
 CREATE INDEX idx_user_strategy ON public.bets USING btree (user_id, strategy);
+
+
+--
+-- Name: ix_automation_tokens_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_automation_tokens_id ON public.automation_tokens USING btree (id);
+
+
+--
+-- Name: ix_automation_tokens_revoked_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_automation_tokens_revoked_at ON public.automation_tokens USING btree (revoked_at);
+
+
+--
+-- Name: ix_automation_tokens_token_hash; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_automation_tokens_token_hash ON public.automation_tokens USING btree (token_hash);
+
+
+--
+-- Name: ix_automation_tokens_token_prefix; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_automation_tokens_token_prefix ON public.automation_tokens USING btree (token_prefix);
+
+
+--
+-- Name: ix_automation_tokens_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_automation_tokens_user_id ON public.automation_tokens USING btree (user_id);
 
 
 --
@@ -479,38 +658,66 @@ CREATE INDEX ix_ingestion_logs_user_id ON public.ingestion_logs USING btree (use
 
 
 --
--- Name: ix_automation_tokens_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_strategy_favorites_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_automation_tokens_id ON public.automation_tokens USING btree (id);
-
-
---
--- Name: ix_automation_tokens_revoked_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_automation_tokens_revoked_at ON public.automation_tokens USING btree (revoked_at);
+CREATE INDEX ix_strategy_favorites_id ON public.strategy_favorites USING btree (id);
 
 
 --
--- Name: ix_automation_tokens_token_hash; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_strategy_favorites_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX ix_automation_tokens_token_hash ON public.automation_tokens USING btree (token_hash);
-
-
---
--- Name: ix_automation_tokens_token_prefix; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX ix_automation_tokens_token_prefix ON public.automation_tokens USING btree (token_prefix);
+CREATE INDEX ix_strategy_favorites_user_id ON public.strategy_favorites USING btree (user_id);
 
 
 --
--- Name: ix_automation_tokens_user_id; Type: INDEX; Schema: public; Owner: -
+-- Name: ix_strategy_favorites_user_strategy; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX ix_automation_tokens_user_id ON public.automation_tokens USING btree (user_id);
+CREATE UNIQUE INDEX ix_strategy_favorites_user_strategy ON public.strategy_favorites USING btree (user_id, strategy);
+
+
+--
+-- Name: ix_strategy_group_members_group_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_strategy_group_members_group_id ON public.strategy_group_members USING btree (group_id);
+
+
+--
+-- Name: ix_strategy_group_members_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_strategy_group_members_id ON public.strategy_group_members USING btree (id);
+
+
+--
+-- Name: ix_strategy_group_members_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_strategy_group_members_unique ON public.strategy_group_members USING btree (group_id, strategy);
+
+
+--
+-- Name: ix_strategy_groups_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_strategy_groups_id ON public.strategy_groups USING btree (id);
+
+
+--
+-- Name: ix_strategy_groups_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_strategy_groups_user_id ON public.strategy_groups USING btree (user_id);
+
+
+--
+-- Name: ix_strategy_groups_user_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_strategy_groups_user_name ON public.strategy_groups USING btree (user_id, name);
 
 
 --
@@ -563,6 +770,14 @@ CREATE UNIQUE INDEX ix_users_stripe_customer_id ON public.users USING btree (str
 
 
 --
+-- Name: automation_tokens automation_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.automation_tokens
+    ADD CONSTRAINT automation_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: bets bets_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -579,11 +794,27 @@ ALTER TABLE ONLY public.ingestion_logs
 
 
 --
--- Name: automation_tokens automation_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: strategy_favorites strategy_favorites_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.automation_tokens
-    ADD CONSTRAINT automation_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+ALTER TABLE ONLY public.strategy_favorites
+    ADD CONSTRAINT strategy_favorites_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: strategy_group_members strategy_group_members_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.strategy_group_members
+    ADD CONSTRAINT strategy_group_members_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.strategy_groups(id) ON DELETE CASCADE;
+
+
+--
+-- Name: strategy_groups strategy_groups_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.strategy_groups
+    ADD CONSTRAINT strategy_groups_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
 
 
 --
@@ -597,3 +828,5 @@ ALTER TABLE ONLY public.users
 --
 -- PostgreSQL database dump complete
 --
+
+
