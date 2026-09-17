@@ -300,10 +300,10 @@ export interface SummaryStats {
 }
 
 export interface PeriodStats {
-  today: SummaryStats
   yesterday: SummaryStats
   last_7_days: SummaryStats
   last_30_days: SummaryStats
+  previous_30_days: SummaryStats
 }
 
 export const getPeriodStats = async (filters: FilterParams): Promise<PeriodStats> => {

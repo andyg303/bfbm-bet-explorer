@@ -11,6 +11,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import Base, Bet, User
 from api.main import FilterParams, get_period_stats
 
+PERIOD_KEYS = ("yesterday", "last_7_days", "last_30_days", "previous_30_days")
+
 
 class PeriodStatsTest(unittest.TestCase):
     def setUp(self):
@@ -21,6 +23,7 @@ class PeriodStatsTest(unittest.TestCase):
         self.other_user = User(id=2, email="other@example.com", password_hash="hash", subscription_status="active")
         self.db.add_all([self.user, self.other_user])
         self.db.commit()
+        self.today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     def tearDown(self):
         self.db.close()
@@ -48,67 +51,73 @@ class PeriodStatsTest(unittest.TestCase):
         return bet
 
     def seed_bets(self):
-        now = datetime.now()
-        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        # One bet each: today, yesterday, 3d ago, 15d ago, 45d ago
-        self.add_bet(1, start_time=now, pl=10.0, commission=0.2)
-        self.add_bet(2, start_time=today - timedelta(hours=6), pl=-10.0)
-        self.add_bet(3, start_time=today - timedelta(days=3), pl=20.0, commission=0.4)
-        self.add_bet(4, start_time=today - timedelta(days=15), pl=-10.0)
-        self.add_bet(5, start_time=today - timedelta(days=45), pl=50.0)
-        # Another user's bet today — must never leak in
-        self.add_bet(6, start_time=now, pl=999.0, user_id=2)
+        t = self.today
+        self.add_bet(1, start_time=t + timedelta(hours=1), pl=999.0)              # today — excluded everywhere
+        self.add_bet(2, start_time=t - timedelta(hours=6), pl=-10.0)              # yesterday
+        self.add_bet(3, start_time=t - timedelta(days=3), pl=20.0, commission=0.4) # in last 7
+        self.add_bet(4, start_time=t - timedelta(days=7) + timedelta(hours=1), pl=5.0)     # oldest day of last 7
+        self.add_bet(5, start_time=t - timedelta(days=8), pl=7.0)                          # outside last 7, in last 30
+        self.add_bet(6, start_time=t - timedelta(days=30) + timedelta(hours=1), pl=-10.0)  # oldest day of last 30
+        self.add_bet(7, start_time=t - timedelta(days=31), pl=100.0)                       # newest day of previous 30
+        self.add_bet(8, start_time=t - timedelta(days=60) + timedelta(hours=1), pl=50.0)   # oldest day of previous 30
+        self.add_bet(9, start_time=t - timedelta(days=61), pl=1000.0)             # outside everything
+        self.add_bet(10, start_time=t - timedelta(hours=3), pl=999.0, user_id=2)  # other user — never leaks
 
-    def test_period_buckets(self):
+    def test_period_buckets_and_boundaries(self):
         self.seed_bets()
         result = get_period_stats(FilterParams(), self.user, self.db)
-
-        self.assertEqual(result["today"]["num_bets"], 1)
-        self.assertEqual(result["today"]["net_pl"], 9.8)
+        self.assertEqual(set(result.keys()), set(PERIOD_KEYS))
 
         self.assertEqual(result["yesterday"]["num_bets"], 1)
         self.assertEqual(result["yesterday"]["net_pl"], -10.0)
 
-        # last 7 days = today + yesterday + the 3-day-old bet
+        # yesterday + 3d + 7d ago; excludes today and 8d ago
         self.assertEqual(result["last_7_days"]["num_bets"], 3)
-        self.assertEqual(result["last_7_days"]["net_pl"], 19.4)
+        self.assertEqual(result["last_7_days"]["net_pl"], 14.6)
 
-        # last 30 days adds the 15-day-old bet but not the 45-day-old one
-        self.assertEqual(result["last_30_days"]["num_bets"], 4)
-        self.assertEqual(result["last_30_days"]["net_pl"], 9.4)
+        # last 7 + 8d + 30d ago; excludes 31d ago
+        self.assertEqual(result["last_30_days"]["num_bets"], 5)
+        self.assertEqual(result["last_30_days"]["net_pl"], 11.6)
 
-        for key in ("today", "yesterday", "last_7_days", "last_30_days"):
-            self.assertEqual(result[key]["num_strategies"], 1)
+        # 31d and 60d ago only — no overlap with last 30, excludes 61d
+        self.assertEqual(result["previous_30_days"]["num_bets"], 2)
+        self.assertEqual(result["previous_30_days"]["net_pl"], 150.0)
+
+    def test_today_is_never_included(self):
+        self.add_bet(1, start_time=datetime.now(), pl=10.0)
+        result = get_period_stats(FilterParams(), self.user, self.db)
+        for key in PERIOD_KEYS:
+            self.assertEqual(result[key]["num_bets"], 0, key)
 
     def test_empty_periods_return_zeroes(self):
         result = get_period_stats(FilterParams(), self.user, self.db)
-        for key in ("today", "yesterday", "last_7_days", "last_30_days"):
+        for key in PERIOD_KEYS:
             self.assertEqual(result[key]["num_bets"], 0)
             self.assertEqual(result[key]["net_pl"], 0)
             self.assertEqual(result[key]["num_strategies"], 0)
 
     def test_window_intersects_existing_date_filters(self):
         self.seed_bets()
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        t = self.today
 
-        # User date_from of yesterday narrows last_7_days to today+yesterday
-        f = FilterParams(date_from=(today - timedelta(days=1)).isoformat())
+        # User date_from of 2 days ago narrows last_7_days to just yesterday
+        f = FilterParams(date_from=(t - timedelta(days=2)).isoformat())
         result = get_period_stats(f, self.user, self.db)
-        self.assertEqual(result["last_7_days"]["num_bets"], 2)
+        self.assertEqual(result["last_7_days"]["num_bets"], 1)
 
-        # User date_to of 40 days ago excludes everything recent
-        f = FilterParams(date_to=(today - timedelta(days=40)).isoformat())
+        # User date_to of 70 days ago excludes everything
+        f = FilterParams(date_to=(t - timedelta(days=70)).isoformat())
         result = get_period_stats(f, self.user, self.db)
-        self.assertEqual(result["today"]["num_bets"], 0)
-        self.assertEqual(result["last_30_days"]["num_bets"], 0)
+        for key in PERIOD_KEYS:
+            self.assertEqual(result[key]["num_bets"], 0, key)
 
     def test_other_filters_still_apply(self):
         self.seed_bets()
         result = get_period_stats(FilterParams(strategies=["NoSuchStrategy"]), self.user, self.db)
-        self.assertEqual(result["today"]["num_bets"], 0)
+        self.assertEqual(result["yesterday"]["num_bets"], 0)
 
         result = get_period_stats(FilterParams(strategies=["Alpha"]), self.user, self.db)
-        self.assertEqual(result["today"]["num_bets"], 1)
+        self.assertEqual(result["yesterday"]["num_bets"], 1)
 
 
 if __name__ == "__main__":

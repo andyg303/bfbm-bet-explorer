@@ -1979,17 +1979,19 @@ def get_period_stats(
 ):
     """Summary stats bucketed into fixed trailing windows by bet start_time.
 
-    Windows: today, yesterday, last 7 days, last 30 days (calendar days,
-    capped at end of today). Active filters still apply — the window is
+    Today is excluded from every window because ingest only ever delivers
+    yesterday's bets. Windows (calendar days, all ending at yesterday's close):
+    yesterday, last 7 days, last 30 days, previous 30 days (days 31-60 back,
+    no overlap with last 30). Active filters still apply — the window is
     intersected with any user-set date range.
     """
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    end_of_today = today + timedelta(days=1) - timedelta(microseconds=1)
+    end_of_yesterday = today - timedelta(microseconds=1)
     windows = {
-        "today": (today, end_of_today),
-        "yesterday": (today - timedelta(days=1), today - timedelta(microseconds=1)),
-        "last_7_days": (today - timedelta(days=6), end_of_today),
-        "last_30_days": (today - timedelta(days=29), end_of_today),
+        "yesterday": (today - timedelta(days=1), end_of_yesterday),
+        "last_7_days": (today - timedelta(days=7), end_of_yesterday),
+        "last_30_days": (today - timedelta(days=30), end_of_yesterday),
+        "previous_30_days": (today - timedelta(days=60), today - timedelta(days=30) - timedelta(microseconds=1)),
     }
     result = {}
     for key, (start, end) in windows.items():

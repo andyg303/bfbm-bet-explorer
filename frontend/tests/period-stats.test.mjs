@@ -8,9 +8,11 @@ const api = readFileSync(new URL('../src/services/api.ts', import.meta.url), 'ut
 const appVue = readFileSync(new URL('../src/App.vue', import.meta.url), 'utf8')
 
 test('period stats row renders the four date buckets', () => {
-  for (const label of ['Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days']) {
+  for (const label of ['Yesterday', 'Last 7 Days', 'Last 30 Days', 'Previous 30 Days']) {
     assert.match(periodStats, new RegExp(`label: '${label}'`), `missing period tile: ${label}`)
   }
+  assert.doesNotMatch(periodStats, /label: 'Today'/, 'today tile removed — ingest only delivers yesterday')
+  assert.match(api, /previous_30_days: SummaryStats/, 'api type should include previous_30_days')
   assert.match(periodStats, /xl:grid-cols-4/, 'tiles should span the full page width on desktop')
 })
 

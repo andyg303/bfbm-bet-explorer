@@ -5,13 +5,13 @@ import type { SummaryStats } from '../services/api'
 
 const betStore = useBetStore()
 
-type PeriodKey = 'today' | 'yesterday' | 'last_7_days' | 'last_30_days'
+type PeriodKey = 'yesterday' | 'last_7_days' | 'last_30_days' | 'previous_30_days'
 
-const PERIODS: { key: PeriodKey; label: string }[] = [
-  { key: 'today', label: 'Today' },
-  { key: 'yesterday', label: 'Yesterday' },
-  { key: 'last_7_days', label: 'Last 7 Days' },
-  { key: 'last_30_days', label: 'Last 30 Days' },
+const PERIODS: { key: PeriodKey; label: string; hint: string }[] = [
+  { key: 'yesterday', label: 'Yesterday', hint: 'Bets started yesterday' },
+  { key: 'last_7_days', label: 'Last 7 Days', hint: 'The 7 days up to and including yesterday' },
+  { key: 'last_30_days', label: 'Last 30 Days', hint: 'The 30 days up to and including yesterday' },
+  { key: 'previous_30_days', label: 'Previous 30 Days', hint: 'Days 31 to 60 back — does not overlap Last 30 Days' },
 ]
 
 const ZERO: SummaryStats = {
@@ -51,7 +51,7 @@ function metricsFor(key: PeriodKey): Metric[] {
 
 <template>
   <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-    <div v-for="p in PERIODS" :key="p.key" class="stat-card !p-3">
+    <div v-for="p in PERIODS" :key="p.key" class="stat-card !p-3" :title="p.hint">
       <div class="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">{{ p.label }}</div>
       <dl class="grid grid-cols-3 gap-x-2 gap-y-1.5">
         <div v-for="m in metricsFor(p.key)" :key="m.label">
