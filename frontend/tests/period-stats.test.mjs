@@ -34,6 +34,12 @@ test('dashboard renders period tiles under the summary header', () => {
   assert.ok(periodIdx > summaryIdx, 'PeriodStats should render underneath the main squares')
 })
 
+test('period stats load on initial dashboard paint', () => {
+  const staged = appVue.match(/function loadDashboardSectionsAfterFirstPaint[\s\S]*?\]\)/)
+  assert.ok(staged, 'staged dashboard loader should exist')
+  assert.match(staged[0], /betStore\.loadPeriodStats\(\)/, 'initial load must fetch period stats, not just refreshAll')
+})
+
 test('period stats refresh alongside the other dashboard sections', () => {
   const refresh = betStore.match(/async function refreshAll[\s\S]*?\]\)/)
   assert.ok(refresh, 'refreshAll should exist')

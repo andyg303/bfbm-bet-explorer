@@ -266,6 +266,7 @@ function loadDashboardSectionsAfterFirstPaint() {
   setTimeout(() => {
     void Promise.all([
       betStore.migrateDeletedToArchived(),
+      betStore.loadPeriodStats(),
       betStore.loadStrategyStats(),
       betStore.loadBets(),
       betStore.loadPLOverTime(),
