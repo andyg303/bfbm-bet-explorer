@@ -11,6 +11,7 @@ import OddsBandsChart from './components/OddsBandsChart.vue'
 import AdvancedOddsCharts from './components/AdvancedOddsCharts.vue'
 import StakingCalculator from './components/StakingCalculator.vue'
 import SummaryHeader from './components/SummaryHeader.vue'
+import PeriodStats from './components/PeriodStats.vue'
 import IngestData from './components/IngestData.vue'
 import MonthlyPLTable from './components/MonthlyPLTable.vue'
 import ArchivedStrategies from './components/ArchivedStrategies.vue'
@@ -579,6 +580,9 @@ watch(() => [currentPage.value, auth.user?.id] as const, async ([page, userId]) 
       <div v-if="activeTab === 'dashboard'" class="px-4 py-6 sm:px-6">
         <SectionLoading :loading="betStore.loadingSections.summary" label="Loading stats">
           <SummaryHeader />
+        </SectionLoading>
+        <SectionLoading :loading="betStore.loadingSections.periods" label="Loading period stats" class="mt-3">
+          <PeriodStats />
         </SectionLoading>
         <div class="mt-6 flex flex-col lg:flex-row gap-6">
           <aside class="lg:flex-shrink-0 transition-all duration-300" :class="[

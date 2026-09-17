@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit, OddsCurvePoint, MonthlyPLResponse, ArchivedStrategy, MergeSuggestion, StrategyInfo, StrategyGroup } from '../services/api'
+import type { FilterParams, StrategyStats, Bet, PLDataPoint, OddsBandProfit, OddsCurvePoint, MonthlyPLResponse, ArchivedStrategy, MergeSuggestion, StrategyInfo, StrategyGroup, PeriodStats } from '../services/api'
 import * as api from '../services/api'
 
-type LoadingSection = 'filters' | 'summary' | 'strategies' | 'bets' | 'plGraph' | 'monthly' | 'oddsBands' | 'archive' | 'mergeSuggestions'
+type LoadingSection = 'filters' | 'summary' | 'periods' | 'strategies' | 'bets' | 'plGraph' | 'monthly' | 'oddsBands' | 'archive' | 'mergeSuggestions'
 type LoadingSections = Record<LoadingSection, boolean>
 type LoadingSectionCounts = Record<LoadingSection, number>
 
@@ -11,6 +11,7 @@ function createLoadingSections(): LoadingSections {
   return {
     filters: false,
     summary: false,
+    periods: false,
     strategies: false,
     bets: false,
     plGraph: false,
@@ -25,6 +26,7 @@ function createLoadingSectionCounts(): LoadingSectionCounts {
   return {
     filters: 0,
     summary: 0,
+    periods: 0,
     strategies: 0,
     bets: 0,
     plGraph: 0,
@@ -42,6 +44,7 @@ export const useBetStore = defineStore('bet', () => {
   const totalBets = ref(0)
   const plOverTime = ref<PLDataPoint[]>([])
   const summaryStats = ref<any>(null)
+  const periodStats = ref<PeriodStats | null>(null)
   const oddsBandsData = ref<OddsBandProfit[]>([])
   const oddsCurveData = ref<OddsCurvePoint[]>([])
   const monthlyPLData = ref<MonthlyPLResponse | null>(null)
@@ -138,6 +141,13 @@ export const useBetStore = defineStore('bet', () => {
     return withLoading('summary', async () => {
       const filtersWithStaking = { ...filters.value, ...stakingParams.value }
       summaryStats.value = await api.getSummaryStats(filtersWithStaking)
+    })
+  }
+
+  async function loadPeriodStats() {
+    return withLoading('periods', async () => {
+      const filtersWithStaking = { ...filters.value, ...stakingParams.value }
+      periodStats.value = await api.getPeriodStats(filtersWithStaking)
     })
   }
 
@@ -422,6 +432,7 @@ export const useBetStore = defineStore('bet', () => {
   async function refreshAll() {
     await Promise.all([
       loadSummaryStats(),
+      loadPeriodStats(),
       loadStrategyStats(),
       loadBets(),
       loadPLOverTime(),
@@ -437,6 +448,7 @@ export const useBetStore = defineStore('bet', () => {
     totalBets,
     plOverTime,
     summaryStats,
+    periodStats,
     oddsBandsData,
     oddsCurveData,
     monthlyPLData,
@@ -458,6 +470,7 @@ export const useBetStore = defineStore('bet', () => {
     loadBets,
     loadPLOverTime,
     loadSummaryStats,
+    loadPeriodStats,
     loadOddsBandsData,
     loadOddsCurveData,
     loadMonthlyPL,

@@ -1855,13 +1855,8 @@ def get_pl_over_time(
     return data
 
 
-@app.post("/summary-stats")
-def get_summary_stats(
-    filters: FilterParams,
-    user: User = Depends(require_active_subscription),
-    db: Session = Depends(get_db),
-):
-    """Get summary statistics."""
+def _compute_summary_stats(db: Session, filters: FilterParams, user: User) -> dict:
+    """Compute summary stats for a filtered bet set."""
     query = db.query(Bet)
     query = apply_filters(query, filters, user.id)
     total_bets = query.count()
@@ -1940,6 +1935,69 @@ def get_summary_stats(
         "roi": round(roi, 2), "yield_pct": round(yield_pct, 2),
         "num_strategies": num_strategies,
     }
+
+
+@app.post("/summary-stats")
+def get_summary_stats(
+    filters: FilterParams,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Get summary statistics."""
+    return _compute_summary_stats(db, filters, user)
+
+
+def _clamp_date_from(existing: Optional[str], lower: datetime) -> str:
+    """Period lower bound: keep the user's date_from if it is later."""
+    if existing:
+        try:
+            if datetime.fromisoformat(existing) > lower:
+                return existing
+        except ValueError:
+            pass
+    return lower.isoformat()
+
+
+def _clamp_date_to(existing: Optional[str], upper: Optional[datetime]) -> Optional[str]:
+    """Period upper bound: keep the user's date_to if it is earlier."""
+    if upper is None:
+        return existing
+    if existing:
+        try:
+            if datetime.fromisoformat(existing) < upper:
+                return existing
+        except ValueError:
+            pass
+    return upper.isoformat()
+
+
+@app.post("/period-stats")
+def get_period_stats(
+    filters: FilterParams,
+    user: User = Depends(require_active_subscription),
+    db: Session = Depends(get_db),
+):
+    """Summary stats bucketed into fixed trailing windows by bet start_time.
+
+    Windows: today, yesterday, last 7 days, last 30 days (calendar days,
+    capped at end of today). Active filters still apply — the window is
+    intersected with any user-set date range.
+    """
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_today = today + timedelta(days=1) - timedelta(microseconds=1)
+    windows = {
+        "today": (today, end_of_today),
+        "yesterday": (today - timedelta(days=1), today - timedelta(microseconds=1)),
+        "last_7_days": (today - timedelta(days=6), end_of_today),
+        "last_30_days": (today - timedelta(days=29), end_of_today),
+    }
+    result = {}
+    for key, (start, end) in windows.items():
+        windowed = filters.model_copy()
+        windowed.date_from = _clamp_date_from(filters.date_from, start)
+        windowed.date_to = _clamp_date_to(filters.date_to, end)
+        result[key] = _compute_summary_stats(db, windowed, user)
+    return result
 
 
 @app.post("/recalculate-staking")

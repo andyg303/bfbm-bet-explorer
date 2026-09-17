@@ -285,6 +285,32 @@ export const getSummaryStats = async (filters: FilterParams) => {
   return response.data
 }
 
+export interface SummaryStats {
+  num_bets: number
+  num_wins: number
+  win_rate: number
+  gross_pl: number
+  commission_paid: number
+  net_pl: number
+  total_pl: number
+  total_staked: number
+  roi: number
+  yield_pct: number
+  num_strategies: number
+}
+
+export interface PeriodStats {
+  today: SummaryStats
+  yesterday: SummaryStats
+  last_7_days: SummaryStats
+  last_30_days: SummaryStats
+}
+
+export const getPeriodStats = async (filters: FilterParams): Promise<PeriodStats> => {
+  const response = await api.post('/period-stats', filters)
+  return response.data
+}
+
 export const getOddsBandsProfit = async (filters: FilterParams): Promise<OddsBandProfit[]> => {
   const response = await api.post('/odds-bands-profit', filters)
   return response.data
